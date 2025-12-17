@@ -1,0 +1,11 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="120" fill="#2563eb"/>
+  <!-- Ícone de Microfone/Estilo Médico -->
+  <path d="M256 128c-44.2 0-80 35.8-80 80v96c0 44.2 35.8 80 80 80s80-35.8 80-80v-96c0-44.2-35.8-80-80-80z" fill="white"/>
+  <path d="M160 272v32c0 53 43 96 96 96s96-43 96-96v-32h-32v32c0 35.3-28.7 64-64 64s-64-28.7-64-64v-32h-32z" fill="white"/>
+  <rect x="240" y="400" width="32" height="48" fill="white"/>
+  <rect x="192" y="448" width="128" height="16" fill="white"/>
+  <!-- Ponto de Gravação -->
+  <circle cx="410" cy="102" r="45" fill="#ef4444"/>
+</svg>
