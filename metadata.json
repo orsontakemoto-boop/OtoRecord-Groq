@@ -1,0 +1,7 @@
+{
+  "name": "OtoRecord - Anamnese Inteligente",
+  "description": "Um aplicativo avançado para médicos otorrinolaringologistas gravarem consultas e gerarem automaticamente prontuários estruturados e concisos utilizando IA.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
