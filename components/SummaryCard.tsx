@@ -5,24 +5,10 @@ import { ConsultationSummary } from '../types';
 interface SummaryCardProps {
   summary: ConsultationSummary;
   onReset: () => void;
+  onCopy: () => void;
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({ summary, onReset }) => {
-  const copyToClipboard = () => {
-    const text = `
-PRONTUÁRIO OTORRINOLARINGOLÓGICO
--------------------------------
-IDENTIFICAÇÃO: ${summary.pacienteInfo || 'N/A'}
-QUEIXA PRINCIPAL: ${summary.queixaPrincipal}
-HDA: ${summary.hda}
-EXAME FÍSICO: ${summary.exameFisico || 'Não registrado verbalmente'}
-HIPÓTESE DIAGNÓSTICA: ${summary.hipoteseDiagnostica || 'A investigar'}
-CONDUTA: ${summary.conduta}
-    `.trim();
-    navigator.clipboard.writeText(text);
-    alert("Copiado para a área de transferência!");
-  };
-
+const SummaryCard: React.FC<SummaryCardProps> = ({ summary, onReset, onCopy }) => {
   const sections = [
     { label: 'Identificação', value: summary.pacienteInfo, icon: 'fa-user' },
     { label: 'Queixa Principal', value: summary.queixaPrincipal, icon: 'fa-comment-medical' },
@@ -40,7 +26,7 @@ CONDUTA: ${summary.conduta}
         </h2>
         <div className="flex gap-2">
           <button 
-            onClick={copyToClipboard}
+            onClick={onCopy}
             className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm transition-all flex items-center gap-2"
           >
             <i className="fas fa-copy"></i> Copiar

@@ -141,7 +141,7 @@ const App: React.FC = () => {
   };
 
   const copySummaryText = useCallback(() => {
-    const s = summary; // Using local state since this is called via effect
+    const s = summary; 
     if (!s) return;
     const text = `
 PRONTUÁRIO OTORRINOLARINGOLÓGICO
@@ -153,14 +153,40 @@ EXAME FÍSICO: ${s.exameFisico || 'Não registrado'}
 HIPÓTESE DIAGNÓSTICA: ${s.hipoteseDiagnostica || 'A investigar'}
 CONDUTA: ${s.conduta}
     `.trim();
-    navigator.clipboard.writeText(text);
-    showToast("Prontuário copiado!");
+    
+    // Tenta usar a API moderna primeiro
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("Prontuário copiado!");
+      }).catch(err => {
+        console.error('Falha ao copiar:', err);
+        fallbackCopyTextToClipboard(text);
+      });
+    } else {
+      fallbackCopyTextToClipboard(text);
+    }
   }, [summary]);
+
+  const fallbackCopyTextToClipboard = (text: string) => {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      showToast("Prontuário copiado!");
+    } catch (err) {
+      console.error('Erro ao copiar (fallback):', err);
+    }
+    document.body.removeChild(textArea);
+  };
 
   const showToast = (msg: string) => {
     const toast = document.createElement('div');
-    toast.className = 'fixed bottom-8 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-full shadow-2xl z-[200] animate-bounce';
-    toast.innerText = msg;
+    toast.className = 'fixed bottom-8 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-full shadow-2xl z-[200] animate-bounce text-sm font-bold flex items-center gap-2';
+    toast.innerHTML = `<i class="fas fa-check-circle"></i> ${msg}`;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
   };
@@ -241,7 +267,7 @@ CONDUTA: ${s.conduta}
               <i className="fas fa-microphone"></i>
             </div>
             <h2 className="text-2xl font-bold text-slate-800 mb-2">Nova Consulta</h2>
-            <p className="text-slate-500 mb-8">O app encerrará sozinho ao ouvir "tchau" ou "até logo" seguido de silêncio.</p>
+            <p className="text-slate-500 mb-8">O app encerrará sozinho ao ouvir palavras de despedida seguidas de silêncio.</p>
             <button onClick={startRecording} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-full font-bold shadow-lg flex items-center gap-3 mx-auto transition-transform active:scale-95">
               <i className="fas fa-play"></i> Iniciar Gravação ({settings.startStopKey})
             </button>
@@ -290,7 +316,7 @@ CONDUTA: ${s.conduta}
               <span className="text-xs text-slate-400 font-medium">Atalho para copiar: <b className="text-slate-600">{settings.copyKey}</b></span>
               <button onClick={resetApp} className="text-xs text-blue-600 font-bold hover:underline">NOVA CONSULTA</button>
             </div>
-            <SummaryCard summary={summary} onReset={resetApp} />
+            <SummaryCard summary={summary} onReset={resetApp} onCopy={copySummaryText} />
           </div>
         )}
 
