@@ -9,12 +9,19 @@ const DEFAULT_SETTINGS: AppSettings = {
   copyKey: 'F6'
 };
 
+const FAREWELL_WORDS = [
+  'tchau', 'até mais', 'até logo', 'quando precisar', 
+  'me ligue', 'me liga', 'bom descanso', 'obrigado doutor', 
+  'obrigada doutor', 'pode ir', 'tá bom então', 'até a próxima'
+];
+
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
   const [summary, setSummary] = useState<ConsultationSummary | null>(null);
   const [timer, setTimer] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [isAutoStopping, setIsAutoStopping] = useState(false);
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
       const saved = localStorage.getItem('otoRecordSettings');
@@ -27,20 +34,24 @@ const App: React.FC = () => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerIntervalRef = useRef<number | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const autoStopTimeoutRef = useRef<number | null>(null);
   
-  // Refs para acesso dentro de event listeners sem stale closures
   const appStateRef = useRef(appState);
-  const summaryRef = useRef(summary);
   const settingsRef = useRef(settings);
 
   useEffect(() => { appStateRef.current = appState; }, [appState]);
-  useEffect(() => { summaryRef.current = summary; }, [summary]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
-  const saveSettings = (newSettings: AppSettings) => {
-    setSettings(newSettings);
-    localStorage.setItem('otoRecordSettings', JSON.stringify(newSettings));
-  };
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && appStateRef.current === AppState.RECORDING) {
+      mediaRecorderRef.current.stop();
+      if (recognitionRef.current) recognitionRef.current.stop();
+      if (autoStopTimeoutRef.current) window.clearTimeout(autoStopTimeoutRef.current);
+      stopTimer();
+      setIsAutoStopping(false);
+    }
+  }, []);
 
   const startRecording = async () => {
     try {
@@ -62,17 +73,54 @@ const App: React.FC = () => {
       recorder.start();
       setAppState(AppState.RECORDING);
       startTimer();
+      initSpeechRecognition();
     } catch (err) {
       setErrorMsg("Erro ao acessar o microfone. Verifique as permissões.");
       setAppState(AppState.ERROR);
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && appStateRef.current === AppState.RECORDING) {
-      mediaRecorderRef.current.stop();
-      stopTimer();
-    }
+  const initSpeechRecognition = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'pt-BR';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((result: any) => result[0].transcript)
+        .join('')
+        .toLowerCase();
+
+      // Reset auto-stop timer if new speech is detected
+      if (autoStopTimeoutRef.current) {
+        window.clearTimeout(autoStopTimeoutRef.current);
+        autoStopTimeoutRef.current = null;
+        setIsAutoStopping(false);
+      }
+
+      const hasFarewell = FAREWELL_WORDS.some(word => transcript.includes(word));
+      
+      if (hasFarewell) {
+        setIsAutoStopping(true);
+        // Espera 3.5 segundos de silêncio após uma palavra de despedida
+        autoStopTimeoutRef.current = window.setTimeout(() => {
+          stopRecording();
+          showToast("Consulta encerrada automaticamente.");
+        }, 3500);
+      }
+    };
+
+    recognition.onerror = () => {
+      // Falha silenciosa no reconhecimento não interrompe a gravação principal
+      console.warn("Speech recognition error - manual stop still available");
+    };
+
+    recognition.start();
+    recognitionRef.current = recognition;
   };
 
   const handleAudioProcessing = async (blob: Blob) => {
@@ -93,7 +141,7 @@ const App: React.FC = () => {
   };
 
   const copySummaryText = useCallback(() => {
-    const s = summaryRef.current;
+    const s = summary; // Using local state since this is called via effect
     if (!s) return;
     const text = `
 PRONTUÁRIO OTORRINOLARINGOLÓGICO
@@ -106,8 +154,8 @@ HIPÓTESE DIAGNÓSTICA: ${s.hipoteseDiagnostica || 'A investigar'}
 CONDUTA: ${s.conduta}
     `.trim();
     navigator.clipboard.writeText(text);
-    showToast("Prontuário copiado com sucesso!");
-  }, []);
+    showToast("Prontuário copiado!");
+  }, [summary]);
 
   const showToast = (msg: string) => {
     const toast = document.createElement('div');
@@ -124,7 +172,7 @@ CONDUTA: ${s.conduta}
       resetApp();
       startRecording();
     }
-  }, []);
+  }, [stopRecording]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -159,6 +207,12 @@ CONDUTA: ${s.conduta}
     setSummary(null);
     setTimer(0);
     setErrorMsg(null);
+    setIsAutoStopping(false);
+  };
+
+  const saveSettings = (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    localStorage.setItem('otoRecordSettings', JSON.stringify(newSettings));
   };
 
   return (
@@ -182,14 +236,14 @@ CONDUTA: ${s.conduta}
 
       <main className="flex-1 p-6 flex flex-col items-center justify-center">
         {appState === AppState.IDLE && (
-          <div className="text-center max-w-lg">
+          <div className="text-center max-w-lg animate-fadeIn">
             <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
               <i className="fas fa-microphone"></i>
             </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">Pronto para a Consulta</h2>
-            <p className="text-slate-600 mb-8">Pressione <span className="font-bold text-blue-600">{settings.startStopKey}</span> para começar.</p>
-            <button onClick={startRecording} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-full font-bold shadow-lg flex items-center gap-3 mx-auto">
-              <i className="fas fa-play"></i> Iniciar Gravação
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Nova Consulta</h2>
+            <p className="text-slate-500 mb-8">O app encerrará sozinho ao ouvir "tchau" ou "até logo" seguido de silêncio.</p>
+            <button onClick={startRecording} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-full font-bold shadow-lg flex items-center gap-3 mx-auto transition-transform active:scale-95">
+              <i className="fas fa-play"></i> Iniciar Gravação ({settings.startStopKey})
             </button>
           </div>
         )}
@@ -200,20 +254,33 @@ CONDUTA: ${s.conduta}
               <i className="fas fa-microphone text-4xl text-red-500 animate-pulse"></i>
               <div className="absolute inset-0 border-4 border-red-500 rounded-full animate-ping opacity-20"></div>
             </div>
-            <div className="text-5xl font-mono font-bold text-slate-800 mb-8">
+            <div className="text-5xl font-mono font-bold text-slate-800 mb-4">
               {Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}
             </div>
-            <button onClick={stopRecording} className="bg-slate-800 text-white px-10 py-4 rounded-full font-bold shadow-lg">
-              Finalizar ({settings.startStopKey})
-            </button>
+            
+            {isAutoStopping ? (
+              <div className="mb-6 px-4 py-2 bg-amber-100 text-amber-700 rounded-full text-sm font-bold animate-bounce inline-block">
+                <i className="fas fa-clock mr-2"></i> Detectando fim da consulta...
+              </div>
+            ) : (
+              <div className="mb-6 text-slate-400 text-xs font-medium uppercase tracking-widest">
+                Gravando áudio da consulta
+              </div>
+            )}
+
+            <div>
+              <button onClick={stopRecording} className="bg-slate-800 text-white px-10 py-4 rounded-full font-bold shadow-lg active:scale-95 transition-transform">
+                Parar Manual ({settings.startStopKey})
+              </button>
+            </div>
           </div>
         )}
 
         {appState === AppState.PROCESSING && (
           <div className="text-center max-w-sm">
             <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-            <h2 className="text-xl font-bold text-slate-800">Processando Anamnese...</h2>
-            <p className="text-slate-500 mt-2">Isso pode levar alguns segundos dependendo da duração do áudio.</p>
+            <h2 className="text-xl font-bold text-slate-800">Sintetizando Prontuário...</h2>
+            <p className="text-slate-500 mt-2">Aguarde enquanto a IA organiza as informações da consulta.</p>
           </div>
         )}
 
@@ -244,7 +311,7 @@ CONDUTA: ${s.conduta}
               <div>
                 <label className="text-xs font-bold text-slate-400 uppercase">Gravar/Parar</label>
                 <input 
-                  className="w-full mt-1 bg-slate-50 border p-3 rounded-xl text-center font-mono font-bold cursor-pointer focus:ring-2 ring-blue-500"
+                  className="w-full mt-1 bg-slate-50 border p-3 rounded-xl text-center font-mono font-bold cursor-pointer focus:ring-2 ring-blue-500 outline-none"
                   readOnly value={settings.startStopKey}
                   onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, startStopKey: e.key}); }}
                 />
@@ -252,7 +319,7 @@ CONDUTA: ${s.conduta}
               <div>
                 <label className="text-xs font-bold text-slate-400 uppercase">Copiar Texto</label>
                 <input 
-                  className="w-full mt-1 bg-slate-50 border p-3 rounded-xl text-center font-mono font-bold cursor-pointer focus:ring-2 ring-blue-500"
+                  className="w-full mt-1 bg-slate-50 border p-3 rounded-xl text-center font-mono font-bold cursor-pointer focus:ring-2 ring-blue-500 outline-none"
                   readOnly value={settings.copyKey}
                   onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, copyKey: e.key}); }}
                 />
@@ -264,7 +331,7 @@ CONDUTA: ${s.conduta}
       )}
 
       <footer className="p-4 text-center text-[10px] text-slate-400 font-medium uppercase tracking-widest border-t border-slate-100 bg-white">
-        OtoRecord Medical Systems &bull; HIPAA Compliant
+        OtoRecord &bull; {new Date().getFullYear()} &bull; Inteligência Médica Segura
       </footer>
 
       <style>{`
