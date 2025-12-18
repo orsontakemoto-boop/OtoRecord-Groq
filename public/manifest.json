@@ -10,9 +10,16 @@
   "icons": [
     {
       "src": "/icon.svg",
-      "sizes": "512x512",
+      "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
     }
-  ]
+  ],
+  "orientation": "portrait-primary",
+  "categories": ["medical", "productivity"]
 }
