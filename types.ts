@@ -15,3 +15,8 @@ export enum AppState {
   RESULT = 'RESULT',
   ERROR = 'ERROR'
 }
+
+export interface AppSettings {
+  startStopKey: string;
+  copyKey: string;
+}
