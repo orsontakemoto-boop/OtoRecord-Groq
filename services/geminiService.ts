@@ -2,11 +2,13 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { ConsultationSummary } from "../types";
 
-export async function processConsultationAudio(audioBase64: string, mimeType: string): Promise<ConsultationSummary> {
-  // Always use the process.env.API_KEY directly as required by guidelines
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export async function processConsultationAudio(audioBase64: string, mimeType: string, apiKey: string): Promise<ConsultationSummary> {
+  if (!apiKey) {
+    throw new Error("Chave de API não configurada.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey: apiKey });
   
-  // Use systemInstruction for persona and structural requirements
   const systemInstruction = `
     Você é um assistente médico especializado em Otorrinolaringologia. 
     Analise o áudio da consulta e gere um resumo estruturado para o prontuário médico.
@@ -22,8 +24,14 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
   `;
 
   try {
-    // Calling generateContent with the model name and required parameters
-    const response: GenerateContentResponse = await ai.models.generateContent({
+    // Criação de uma promessa de Timeout para evitar loops infinitos
+    const timeoutLimit = 90000; // 90 segundos (áudios longos demoram processar)
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error("TIMEOUT")), timeoutLimit)
+    );
+
+    // Chamada da API
+    const apiCall = ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: {
         parts: [
@@ -42,43 +50,50 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            pacienteInfo: { 
-              type: Type.STRING,
-              description: 'Identificação básica do paciente se disponível.'
-            },
-            queixaPrincipal: { 
-              type: Type.STRING,
-              description: 'O motivo principal da consulta.'
-            },
-            hda: { 
-              type: Type.STRING,
-              description: 'História da Doença Atual.'
-            },
-            exameFisico: { 
-              type: Type.STRING,
-              description: 'Achados do exame físico.'
-            },
-            hipoteseDiagnostica: { 
-              type: Type.STRING,
-              description: 'Suspeitas ou hipóteses diagnósticas.'
-            },
-            conduta: { 
-              type: Type.STRING,
-              description: 'Orientações e planos de conduta.'
-            }
+            pacienteInfo: { type: Type.STRING },
+            queixaPrincipal: { type: Type.STRING },
+            hda: { type: Type.STRING },
+            exameFisico: { type: Type.STRING },
+            hipoteseDiagnostica: { type: Type.STRING },
+            conduta: { type: Type.STRING }
           },
           propertyOrdering: ["pacienteInfo", "queixaPrincipal", "hda", "exameFisico", "hipoteseDiagnostica", "conduta"],
         }
       }
     });
 
-    // Accessing .text as a property as per @google/genai guidelines
+    // Promise.race vai resolver quem terminar primeiro: a API ou o Timeout
+    const response = await Promise.race([apiCall, timeoutPromise]) as GenerateContentResponse;
+
     const resultText = response.text;
-    if (!resultText) throw new Error("Não foi possível gerar o resumo.");
+    if (!resultText) throw new Error("A IA retornou uma resposta vazia.");
     
     return JSON.parse(resultText) as ConsultationSummary;
-  } catch (error) {
-    console.error("Erro no processamento Gemini:", error);
-    throw error;
+
+  } catch (error: any) {
+    console.error("Erro detalhado no Gemini:", error);
+
+    // Tratamento de erros específicos para feedback ao usuário
+    if (error.message === "TIMEOUT") {
+      throw new Error("O processamento demorou muito. Verifique sua internet ou tente um áudio mais curto.");
+    }
+    
+    // Verificação genérica de erros (Duck typing para evitar imports quebrados)
+    const status = error.status || 0;
+    const msg = error.message || JSON.stringify(error);
+
+    if (status === 429 || msg.includes("429") || msg.includes("Quota exceeded") || msg.includes("Resource has been exhausted")) {
+      throw new Error("Limite de cota da SUA chave atingido. Verifique seu plano no Google AI Studio.");
+    }
+
+    if (status === 400 || msg.includes("API_KEY_INVALID") || msg.includes("400")) {
+      throw new Error("Chave de API inválida. Verifique as configurações.");
+    }
+
+    if (status === 503 || msg.includes("503") || msg.includes("overloaded")) {
+      throw new Error("Serviço da IA temporariamente sobrecarregado. Tente novamente em instantes.");
+    }
+
+    throw new Error(`Falha na comunicação com a IA: ${msg.substring(0, 100)}...`);
   }
 }

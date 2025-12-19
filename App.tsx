@@ -9,10 +9,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   copyKey: 'F6'
 };
 
-// Palavras-chave de disparo imediato para encerramento
 const IMMEDIATE_STOP_WORDS = ['tchau', 'tchau-tchau', 'tchau tchau'];
 
-// Outras palavras de despedida que podem exigir um pouco mais de contexto ou silêncio
 const FAREWELL_WORDS = [
   ...IMMEDIATE_STOP_WORDS,
   'até mais', 'até logo', 'quando precisar', 
@@ -21,6 +19,36 @@ const FAREWELL_WORDS = [
   'tá certo doutor', 'muito obrigado', 'finalizar consulta'
 ];
 
+// Configurações do VAD
+const SILENCE_THRESHOLD = 15; // Sensibilidade (0-255). Ajuste se o ambiente for ruidoso.
+const SILENCE_DELAY_MS = 3000; // 3 segundos de silêncio para pausar
+
+// Helper seguro para localStorage (evita crash em iframes bloqueados)
+const safeGetItem = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch (e) {
+    console.warn('LocalStorage access denied:', e);
+    return null;
+  }
+};
+
+const safeSetItem = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    console.warn('LocalStorage set denied:', e);
+  }
+};
+
+const safeRemoveItem = (key: string) => {
+  try {
+    localStorage.removeItem(key);
+  } catch (e) {
+    console.warn('LocalStorage remove denied:', e);
+  }
+};
+
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
   const [summary, setSummary] = useState<ConsultationSummary | null>(null);
@@ -28,9 +56,14 @@ const App: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isAutoStopping, setIsAutoStopping] = useState(false);
+  const [isPausedBySilence, setIsPausedBySilence] = useState(false);
+  
+  const [apiKey, setApiKey] = useState<string>(() => safeGetItem('otoRecordApiKey') || '');
+  const [tempApiKey, setTempApiKey] = useState('');
+  
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
-      const saved = localStorage.getItem('otoRecordSettings');
+      const saved = safeGetItem('otoRecordSettings');
       return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
     } catch {
       return DEFAULT_SETTINGS;
@@ -39,34 +72,130 @@ const App: React.FC = () => {
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const mimeTypeRef = useRef<string>(''); // Para guardar o tipo de áudio real usado
   const timerIntervalRef = useRef<number | null>(null);
   const recognitionRef = useRef<any>(null);
   const autoStopTimeoutRef = useRef<number | null>(null);
+
+  // Refs para VAD (Voice Activity Detection)
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const silenceStartRef = useRef<number | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   
   const appStateRef = useRef(appState);
   const settingsRef = useRef(settings);
+  const apiKeyRef = useRef(apiKey);
 
   useEffect(() => { appStateRef.current = appState; }, [appState]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
+  useEffect(() => { apiKeyRef.current = apiKey; }, [apiKey]);
+
+  const saveApiKey = (key: string) => {
+    const cleanKey = key.trim();
+    setApiKey(cleanKey);
+    safeSetItem('otoRecordApiKey', cleanKey);
+    if (cleanKey) setShowSettings(false);
+  };
+
+  const getSupportedMimeType = () => {
+    const types = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4', // Safari
+      'audio/ogg;codecs=opus'
+    ];
+    for (const type of types) {
+      if (MediaRecorder.isTypeSupported(type)) return type;
+    }
+    return ''; // Fallback do navegador
+  };
 
   const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && appStateRef.current === AppState.RECORDING) {
-      console.log("Parando gravação...");
-      if (recognitionRef.current) {
-        recognitionRef.current.onend = null;
-        recognitionRef.current.stop();
-      }
-      mediaRecorderRef.current.stop();
-      if (autoStopTimeoutRef.current) window.clearTimeout(autoStopTimeoutRef.current);
-      stopTimer();
-      setIsAutoStopping(false);
+    if (appStateRef.current !== AppState.RECORDING) return;
+    
+    console.log("Parando gravação...");
+    
+    // Parar reconhecimento de fala
+    if (recognitionRef.current) {
+      recognitionRef.current.onend = null;
+      recognitionRef.current.stop();
     }
+
+    // Parar análise de áudio (VAD)
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(console.error);
+    }
+    
+    // Parar gravador
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+
+    if (autoStopTimeoutRef.current) window.clearTimeout(autoStopTimeoutRef.current);
+    stopTimer();
+    setIsAutoStopping(false);
+    setIsPausedBySilence(false);
   }, []);
 
+  // Loop de Análise de Áudio (VAD)
+  const analyzeAudio = () => {
+    if (!analyserRef.current || appStateRef.current !== AppState.RECORDING) return;
+
+    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+    analyserRef.current.getByteFrequencyData(dataArray);
+
+    // Calcular volume médio
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) {
+      sum += dataArray[i];
+    }
+    const average = sum / dataArray.length;
+
+    const isSilent = average < SILENCE_THRESHOLD;
+    const now = Date.now();
+
+    if (isSilent) {
+      if (!silenceStartRef.current) {
+        silenceStartRef.current = now;
+      } else if (now - silenceStartRef.current > SILENCE_DELAY_MS) {
+        // Silêncio longo -> Pausar Recorder
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          console.log("Silêncio detectado (VAD). Pausando...");
+          mediaRecorderRef.current.pause();
+          setIsPausedBySilence(true);
+        }
+      }
+    } else {
+      // Som detectado
+      silenceStartRef.current = null;
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
+        console.log("Voz detectada (VAD). Retomando...");
+        mediaRecorderRef.current.resume();
+        setIsPausedBySilence(false);
+      }
+    }
+
+    animationFrameRef.current = requestAnimationFrame(analyzeAudio);
+  };
+
   const startRecording = async () => {
+    if (!apiKeyRef.current) {
+      setShowSettings(true);
+      setErrorMsg("Configure sua Chave de API antes de iniciar.");
+      return;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const mimeType = getSupportedMimeType();
+      mimeTypeRef.current = mimeType;
+      
+      const options = mimeType ? { mimeType } : undefined;
+      const recorder = new MediaRecorder(stream, options);
+      
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
@@ -75,17 +204,36 @@ const App: React.FC = () => {
       };
 
       recorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        // Blob final com o tipo correto
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
         handleAudioProcessing(audioBlob);
         stream.getTracks().forEach(track => track.stop());
       };
+
+      // Configuração do VAD
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const analyser = audioContext.createAnalyser();
+      const source = audioContext.createMediaStreamSource(stream);
+      
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+      sourceRef.current = source;
+      silenceStartRef.current = null;
 
       recorder.start();
       setAppState(AppState.RECORDING);
       startTimer();
       initSpeechRecognition();
+      
+      // Inicia loop VAD
+      analyzeAudio();
+
     } catch (err) {
-      setErrorMsg("Erro ao acessar o microfone. Verifique as permissões.");
+      console.error(err);
+      setErrorMsg("Erro ao acessar o microfone. Verifique permissões e hardware.");
       setAppState(AppState.ERROR);
     }
   };
@@ -109,21 +257,22 @@ const App: React.FC = () => {
       }
       
       const text = latestTranscript.toLowerCase();
-      console.log("Transcrição detectada:", text);
+      // Failsafe: Se reconheceu texto, retoma gravação se estiver pausada
+      if (text.trim().length > 0 && mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
+        mediaRecorderRef.current.resume();
+        setIsPausedBySilence(false);
+      }
 
-      // Cancelar qualquer timeout pendente se nova fala for detectada (reseta o timer de "ausência de fala")
       if (autoStopTimeoutRef.current) {
         window.clearTimeout(autoStopTimeoutRef.current);
         autoStopTimeoutRef.current = null;
         setIsAutoStopping(false);
       }
 
-      // 1. Checagem de palavras de encerramento imediato (tchau, tchau-tchau)
       const hasImmediateTrigger = IMMEDIATE_STOP_WORDS.some(word => text.includes(word));
       
       if (hasImmediateTrigger) {
         setIsAutoStopping(true);
-        // Delay curto de 1.2s para garantir que o áudio da própria despedida seja gravado pelo MediaRecorder
         autoStopTimeoutRef.current = window.setTimeout(() => {
           if (appStateRef.current === AppState.RECORDING) {
             stopRecording();
@@ -133,7 +282,6 @@ const App: React.FC = () => {
         return;
       }
 
-      // 2. Checagem de outras despedidas (com espera maior para garantir o fim da consulta)
       const hasGeneralFarewell = FAREWELL_WORDS.some(word => text.includes(word));
       if (hasGeneralFarewell) {
         setIsAutoStopping(true);
@@ -147,14 +295,9 @@ const App: React.FC = () => {
     };
 
     recognition.onend = () => {
-      // Reinicia o motor se o navegador o fechar por inatividade enquanto ainda gravamos
       if (appStateRef.current === AppState.RECORDING) {
         try { recognition.start(); } catch(e) {}
       }
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error("Erro no SpeechRecognition:", event.error);
     };
 
     recognition.start();
@@ -167,13 +310,29 @@ const App: React.FC = () => {
       const reader = new FileReader();
       reader.readAsDataURL(blob);
       reader.onloadend = async () => {
-        const base64Audio = (reader.result as string).split(',')[1];
-        const result = await processConsultationAudio(base64Audio, 'audio/webm');
-        setSummary(result);
-        setAppState(AppState.RESULT);
+        try {
+          const base64Audio = (reader.result as string).split(',')[1];
+          // Usa o mimeType real detectado na gravação
+          const mimeType = mimeTypeRef.current || 'audio/webm';
+          
+          const result = await processConsultationAudio(base64Audio, mimeType, apiKeyRef.current);
+          setSummary(result);
+          setAppState(AppState.RESULT);
+        } catch (innerError: any) {
+          console.error("Erro processamento:", innerError);
+          // Se for erro de chave inválida, limpa para pedir de novo
+          if (innerError.message && (innerError.message.includes("Chave de API inválida") || innerError.message.includes("400"))) {
+            safeRemoveItem('otoRecordApiKey');
+            setApiKey('');
+            setErrorMsg("Sua Chave de API parece inválida ou expirou. Por favor, configure-a novamente.");
+          } else {
+            setErrorMsg(innerError.message || "Erro ao processar resumo.");
+          }
+          setAppState(AppState.ERROR);
+        }
       };
     } catch (err) {
-      setErrorMsg("Erro ao processar áudio. Verifique sua conexão e chave de API.");
+      setErrorMsg("Erro na leitura do arquivo de áudio.");
       setAppState(AppState.ERROR);
     }
   };
@@ -196,7 +355,6 @@ CONDUTA: ${s.conduta}
       navigator.clipboard.writeText(text).then(() => {
         showToast("Prontuário copiado!");
       }).catch(err => {
-        console.error('Falha ao copiar:', err);
         fallbackCopyTextToClipboard(text);
       });
     } else {
@@ -258,7 +416,12 @@ CONDUTA: ${s.conduta}
 
   const startTimer = () => {
     setTimer(0);
-    timerIntervalRef.current = window.setInterval(() => setTimer(v => v + 1), 1000);
+    // Só avança o timer se não estiver pausado por silêncio
+    timerIntervalRef.current = window.setInterval(() => {
+      if (!isPausedBySilence) {
+        setTimer(v => v + 1);
+      }
+    }, 1000);
   };
 
   const stopTimer = () => {
@@ -271,11 +434,12 @@ CONDUTA: ${s.conduta}
     setTimer(0);
     setErrorMsg(null);
     setIsAutoStopping(false);
+    setIsPausedBySilence(false);
   };
 
   const saveSettings = (newSettings: AppSettings) => {
     setSettings(newSettings);
-    localStorage.setItem('otoRecordSettings', JSON.stringify(newSettings));
+    safeSetItem('otoRecordSettings', JSON.stringify(newSettings));
   };
 
   return (
@@ -298,14 +462,40 @@ CONDUTA: ${s.conduta}
       </header>
 
       <main className="flex-1 p-6 flex flex-col items-center justify-center">
-        {appState === AppState.IDLE && (
+        {(!apiKey && !showSettings) && (
+           <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-8 text-center animate-fadeIn">
+             <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-6 text-3xl">
+               <i className="fas fa-key"></i>
+             </div>
+             <h2 className="text-2xl font-bold text-slate-800 mb-2">Bem-vindo ao OtoRecord</h2>
+             <p className="text-slate-500 mb-8 max-w-md">
+               Para garantir privacidade e desempenho, este aplicativo requer sua própria <strong>Chave de API do Google Gemini</strong>.
+             </p>
+             <button 
+               onClick={() => setShowSettings(true)} 
+               className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 transition-transform active:scale-95"
+             >
+               Configurar Minha Chave <i className="fas fa-arrow-right"></i>
+             </button>
+             <a 
+               href="https://aistudio.google.com/app/apikey" 
+               target="_blank" 
+               rel="noreferrer"
+               className="mt-6 text-sm text-blue-500 hover:underline"
+             >
+               Não tem uma chave? Crie uma aqui gratuitamente.
+             </a>
+           </div>
+        )}
+
+        {appState === AppState.IDLE && apiKey && (
           <div className="text-center max-w-lg animate-fadeIn">
             <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl shadow-inner">
               <i className="fas fa-microphone"></i>
             </div>
             <h2 className="text-2xl font-bold text-slate-800 mb-2">Nova Consulta</h2>
             <p className="text-slate-500 mb-8">
-              O app encerra automaticamente ao ouvir <span className="font-bold text-blue-600">"tchau"</span>.
+              O app pausa automaticamente no silêncio e encerra ao ouvir <span className="font-bold text-blue-600">"tchau"</span>.
             </p>
             <button 
               onClick={startRecording} 
@@ -318,17 +508,26 @@ CONDUTA: ${s.conduta}
 
         {appState === AppState.RECORDING && (
           <div className="text-center">
-            <div className="w-32 h-32 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 relative shadow-inner">
-              <i className="fas fa-microphone text-4xl text-red-500 animate-pulse"></i>
-              <div className="absolute inset-0 border-4 border-red-500 rounded-full animate-ping opacity-20"></div>
+            
+            {/* Indicador Visual do Estado (Gravando vs Pausado por Silêncio) */}
+            <div className={`w-32 h-32 rounded-full flex items-center justify-center mx-auto mb-6 relative shadow-inner transition-colors duration-500 ${isPausedBySilence ? 'bg-amber-100' : 'bg-red-100'}`}>
+              <i className={`fas text-4xl transition-colors duration-500 ${isPausedBySilence ? 'fa-microphone-slash text-amber-500' : 'fa-microphone text-red-500 animate-pulse'}`}></i>
+              {!isPausedBySilence && (
+                <div className="absolute inset-0 border-4 border-red-500 rounded-full animate-ping opacity-20"></div>
+              )}
             </div>
-            <div className="text-5xl font-mono font-bold text-slate-800 mb-4 tabular-nums">
+
+            <div className={`text-5xl font-mono font-bold mb-4 tabular-nums transition-colors duration-300 ${isPausedBySilence ? 'text-amber-500' : 'text-slate-800'}`}>
               {Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}
             </div>
             
             {isAutoStopping ? (
-              <div className="mb-6 px-4 py-2 bg-amber-100 text-amber-700 rounded-full text-sm font-bold animate-bounce inline-block border border-amber-200">
-                <i className="fas fa-clock mr-2"></i> Finalizando gravação...
+              <div className="mb-6 px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-bold animate-bounce inline-block border border-blue-200">
+                <i className="fas fa-check mr-2"></i> Encerrando consulta...
+              </div>
+            ) : isPausedBySilence ? (
+              <div className="mb-6 px-4 py-2 bg-amber-50 text-amber-600 rounded-full text-xs font-bold inline-block border border-amber-100 uppercase tracking-wide shadow-sm animate-pulse">
+                <i className="fas fa-pause mr-2"></i> Pausa Inteligente (Silêncio)
               </div>
             ) : (
               <div className="mb-6 text-slate-400 text-xs font-medium uppercase tracking-widest flex items-center justify-center gap-2">
@@ -352,7 +551,9 @@ CONDUTA: ${s.conduta}
           <div className="text-center max-w-sm animate-pulse">
             <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
             <h2 className="text-xl font-bold text-slate-800">Processando...</h2>
-            <p className="text-slate-500 mt-2">A IA está gerando o resumo estruturado para o prontuário.</p>
+            <p className="text-slate-500 mt-2">
+              Aguarde. Graças à Pausa Inteligente, o envio será mais rápido.
+            </p>
           </div>
         )}
 
@@ -367,12 +568,13 @@ CONDUTA: ${s.conduta}
         )}
 
         {appState === AppState.ERROR && (
-          <div className="text-center max-w-md animate-fadeIn">
-            <div className="text-red-500 text-6xl mb-4">
+          <div className="text-center max-w-md animate-fadeIn bg-white p-6 rounded-xl shadow-lg border border-red-100">
+            <div className="text-red-500 text-5xl mb-4">
               <i className="fas fa-exclamation-triangle"></i>
             </div>
-            <h2 className="text-xl font-bold text-slate-800">{errorMsg}</h2>
-            <button onClick={resetApp} className="mt-6 bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-full font-bold transition-colors">
+            <h2 className="text-lg font-bold text-slate-800 mb-2">Ops! Algo deu errado.</h2>
+            <p className="text-slate-600 text-sm mb-6 bg-red-50 p-3 rounded-lg border border-red-100">{errorMsg}</p>
+            <button onClick={resetApp} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-bold transition-colors w-full">
               Tentar Novamente
             </button>
           </div>
@@ -381,40 +583,80 @@ CONDUTA: ${s.conduta}
 
       {showSettings && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-xs animate-fadeIn">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md animate-fadeIn max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-bold text-slate-800">Atalhos</h3>
-              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600">
-                <i className="fas fa-times"></i>
+              <h3 className="text-lg font-bold text-slate-800">Configurações</h3>
+              {apiKey && (
+                <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600">
+                  <i className="fas fa-times"></i>
+                </button>
+              )}
+            </div>
+            
+            <div className="space-y-8">
+              {/* Seção API Key */}
+              <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                <label className="text-xs font-bold text-blue-600 uppercase tracking-widest block mb-2">
+                  <i className="fas fa-key mr-1"></i> Chave de API Gemini
+                </label>
+                <p className="text-xs text-slate-500 mb-3">
+                  Sua chave é armazenada localmente no seu navegador.
+                </p>
+                <div className="flex gap-2">
+                  <input 
+                    type="password"
+                    className="flex-1 bg-white border border-blue-200 p-3 rounded-xl text-sm font-mono outline-none focus:ring-2 ring-blue-500"
+                    placeholder="Cole sua chave aqui (AIza...)"
+                    defaultValue={apiKey}
+                    onChange={(e) => setTempApiKey(e.target.value)}
+                  />
+                  <button 
+                    onClick={() => saveApiKey(tempApiKey || apiKey)}
+                    className="bg-blue-600 text-white px-4 rounded-xl font-bold hover:bg-blue-700"
+                  >
+                    Salvar
+                  </button>
+                </div>
+                <div className="mt-2 text-right">
+                  <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-xs text-blue-500 underline hover:text-blue-700">Obter chave grátis</a>
+                </div>
+              </div>
+
+              {/* Seção Atalhos */}
+              {apiKey && (
+                <div>
+                  <h4 className="text-sm font-bold text-slate-700 mb-4 border-b pb-2">Atalhos de Teclado</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gravar / Parar</label>
+                      <div className="relative mt-1">
+                        <input 
+                          className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl text-center font-mono font-bold text-slate-600 focus:border-blue-500 outline-none transition-all cursor-pointer text-sm"
+                          readOnly value={settings.startStopKey}
+                          onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, startStopKey: e.key}); }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Copiar Resumo</label>
+                      <div className="relative mt-1">
+                        <input 
+                          className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl text-center font-mono font-bold text-slate-600 focus:border-blue-500 outline-none transition-all cursor-pointer text-sm"
+                          readOnly value={settings.copyKey}
+                          onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, copyKey: e.key}); }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {apiKey && (
+              <button onClick={() => setShowSettings(false)} className="w-full mt-8 bg-slate-800 hover:bg-slate-900 text-white py-4 rounded-2xl font-bold shadow-lg transition-all active:scale-95">
+                Fechar
               </button>
-            </div>
-            <div className="space-y-6">
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gravar / Parar</label>
-                <div className="relative mt-1">
-                  <input 
-                    className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl text-center font-mono font-bold text-blue-600 focus:border-blue-500 outline-none transition-all cursor-pointer"
-                    readOnly value={settings.startStopKey}
-                    onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, startStopKey: e.key}); }}
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] text-slate-300 pointer-events-none">Pressione a tecla</div>
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Copiar Resumo</label>
-                <div className="relative mt-1">
-                  <input 
-                    className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl text-center font-mono font-bold text-blue-600 focus:border-blue-500 outline-none transition-all cursor-pointer"
-                    readOnly value={settings.copyKey}
-                    onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, copyKey: e.key}); }}
-                  />
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] text-slate-300 pointer-events-none">Pressione a tecla</div>
-                </div>
-              </div>
-            </div>
-            <button onClick={() => setShowSettings(false)} className="w-full mt-8 bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold shadow-lg transition-all active:scale-95">
-              Confirmar
-            </button>
+            )}
           </div>
         </div>
       )}
