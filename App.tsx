@@ -9,11 +9,16 @@ const DEFAULT_SETTINGS: AppSettings = {
   copyKey: 'F6'
 };
 
+// Palavras-chave de disparo imediato para encerramento
+const IMMEDIATE_STOP_WORDS = ['tchau', 'tchau-tchau', 'tchau tchau'];
+
+// Outras palavras de despedida que podem exigir um pouco mais de contexto ou silêncio
 const FAREWELL_WORDS = [
-  'tchau', 'até mais', 'até logo', 'quando precisar', 
+  ...IMMEDIATE_STOP_WORDS,
+  'até mais', 'até logo', 'quando precisar', 
   'me ligue', 'me liga', 'bom descanso', 'obrigado doutor', 
   'obrigada doutor', 'pode ir', 'tá bom então', 'até a próxima',
-  'tá certo doutor', 'muito obrigado', 'tchau tchau'
+  'tá certo doutor', 'muito obrigado', 'finalizar consulta'
 ];
 
 const App: React.FC = () => {
@@ -46,8 +51,12 @@ const App: React.FC = () => {
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && appStateRef.current === AppState.RECORDING) {
+      console.log("Parando gravação...");
+      if (recognitionRef.current) {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.stop();
+      }
       mediaRecorderRef.current.stop();
-      if (recognitionRef.current) recognitionRef.current.stop();
       if (autoStopTimeoutRef.current) window.clearTimeout(autoStopTimeoutRef.current);
       stopTimer();
       setIsAutoStopping(false);
@@ -83,7 +92,10 @@ const App: React.FC = () => {
 
   const initSpeechRecognition = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) {
+      console.warn("SpeechRecognition não suportado neste navegador.");
+      return;
+    }
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'pt-BR';
@@ -91,32 +103,58 @@ const App: React.FC = () => {
     recognition.interimResults = true;
 
     recognition.onresult = (event: any) => {
-      // Pegamos apenas a parte mais recente da fala
-      const lastResultIndex = event.results.length - 1;
-      const lastTranscript = event.results[lastResultIndex][0].transcript.toLowerCase();
+      let latestTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        latestTranscript += event.results[i][0].transcript;
+      }
+      
+      const text = latestTranscript.toLowerCase();
+      console.log("Transcrição detectada:", text);
 
-      // "Ausência de fala": Se qualquer nova fala for detectada, cancelamos o encerramento automático
+      // Cancelar qualquer timeout pendente se nova fala for detectada (reseta o timer de "ausência de fala")
       if (autoStopTimeoutRef.current) {
         window.clearTimeout(autoStopTimeoutRef.current);
         autoStopTimeoutRef.current = null;
         setIsAutoStopping(false);
       }
 
-      // Verificamos se a frase mais recente contém uma despedida
-      const hasFarewell = FAREWELL_WORDS.some(word => lastTranscript.includes(word));
+      // 1. Checagem de palavras de encerramento imediato (tchau, tchau-tchau)
+      const hasImmediateTrigger = IMMEDIATE_STOP_WORDS.some(word => text.includes(word));
       
-      if (hasFarewell) {
+      if (hasImmediateTrigger) {
         setIsAutoStopping(true);
-        // Se houver "ausência de fala" (nada novo no onresult) por 4 segundos, encerramos.
+        // Delay curto de 1.2s para garantir que o áudio da própria despedida seja gravado pelo MediaRecorder
         autoStopTimeoutRef.current = window.setTimeout(() => {
-          stopRecording();
-          showToast("Encerrado por ausência de fala após despedida.");
-        }, 4000);
+          if (appStateRef.current === AppState.RECORDING) {
+            stopRecording();
+            showToast("Encerrado: 'Tchau' detectado.");
+          }
+        }, 1200);
+        return;
+      }
+
+      // 2. Checagem de outras despedidas (com espera maior para garantir o fim da consulta)
+      const hasGeneralFarewell = FAREWELL_WORDS.some(word => text.includes(word));
+      if (hasGeneralFarewell) {
+        setIsAutoStopping(true);
+        autoStopTimeoutRef.current = window.setTimeout(() => {
+          if (appStateRef.current === AppState.RECORDING) {
+            stopRecording();
+            showToast("Encerrado por despedida e ausência de fala.");
+          }
+        }, 3500);
       }
     };
 
-    recognition.onerror = () => {
-      console.warn("Reconhecimento de voz pausado - parada manual disponível.");
+    recognition.onend = () => {
+      // Reinicia o motor se o navegador o fechar por inatividade enquanto ainda gravamos
+      if (appStateRef.current === AppState.RECORDING) {
+        try { recognition.start(); } catch(e) {}
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Erro no SpeechRecognition:", event.error);
     };
 
     recognition.start();
@@ -253,7 +291,7 @@ CONDUTA: ${s.conduta}
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Inteligência Médica</p>
             </div>
           </div>
-          <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-blue-600">
+          <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors">
             <i className="fas fa-cog text-xl"></i>
           </button>
         </div>
@@ -262,39 +300,48 @@ CONDUTA: ${s.conduta}
       <main className="flex-1 p-6 flex flex-col items-center justify-center">
         {appState === AppState.IDLE && (
           <div className="text-center max-w-lg animate-fadeIn">
-            <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
+            <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl shadow-inner">
               <i className="fas fa-microphone"></i>
             </div>
             <h2 className="text-2xl font-bold text-slate-800 mb-2">Nova Consulta</h2>
-            <p className="text-slate-500 mb-8">Fale naturalmente. O app encerra sozinho ao detectar despedida e ausência de fala.</p>
-            <button onClick={startRecording} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-full font-bold shadow-lg flex items-center gap-3 mx-auto transition-transform active:scale-95">
-              <i className="fas fa-play"></i> Iniciar Gravação ({settings.startStopKey})
+            <p className="text-slate-500 mb-8">
+              O app encerra automaticamente ao ouvir <span className="font-bold text-blue-600">"tchau"</span>.
+            </p>
+            <button 
+              onClick={startRecording} 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-full font-bold shadow-lg flex items-center gap-3 mx-auto transition-all active:scale-95"
+            >
+              <i className="fas fa-play"></i> Iniciar ({settings.startStopKey})
             </button>
           </div>
         )}
 
         {appState === AppState.RECORDING && (
           <div className="text-center">
-            <div className="w-32 h-32 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 relative">
+            <div className="w-32 h-32 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 relative shadow-inner">
               <i className="fas fa-microphone text-4xl text-red-500 animate-pulse"></i>
               <div className="absolute inset-0 border-4 border-red-500 rounded-full animate-ping opacity-20"></div>
             </div>
-            <div className="text-5xl font-mono font-bold text-slate-800 mb-4">
+            <div className="text-5xl font-mono font-bold text-slate-800 mb-4 tabular-nums">
               {Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}
             </div>
             
             {isAutoStopping ? (
-              <div className="mb-6 px-4 py-2 bg-amber-100 text-amber-700 rounded-full text-sm font-bold animate-bounce inline-block">
-                <i className="fas fa-clock mr-2"></i> Monitorando ausência de fala...
+              <div className="mb-6 px-4 py-2 bg-amber-100 text-amber-700 rounded-full text-sm font-bold animate-bounce inline-block border border-amber-200">
+                <i className="fas fa-clock mr-2"></i> Finalizando gravação...
               </div>
             ) : (
-              <div className="mb-6 text-slate-400 text-xs font-medium uppercase tracking-widest">
-                Gravando áudio da consulta
+              <div className="mb-6 text-slate-400 text-xs font-medium uppercase tracking-widest flex items-center justify-center gap-2">
+                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                Gravando áudio...
               </div>
             )}
 
             <div>
-              <button onClick={stopRecording} className="bg-slate-800 text-white px-10 py-4 rounded-full font-bold shadow-lg active:scale-95 transition-transform">
+              <button 
+                onClick={stopRecording} 
+                className="bg-slate-800 hover:bg-slate-900 text-white px-10 py-4 rounded-full font-bold shadow-lg active:scale-95 transition-all"
+              >
                 Parar Manual ({settings.startStopKey})
               </button>
             </div>
@@ -302,66 +349,83 @@ CONDUTA: ${s.conduta}
         )}
 
         {appState === AppState.PROCESSING && (
-          <div className="text-center max-w-sm">
+          <div className="text-center max-w-sm animate-pulse">
             <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-            <h2 className="text-xl font-bold text-slate-800">Sintetizando Prontuário...</h2>
-            <p className="text-slate-500 mt-2">Aguarde enquanto a IA organiza as informações da consulta.</p>
+            <h2 className="text-xl font-bold text-slate-800">Processando...</h2>
+            <p className="text-slate-500 mt-2">A IA está gerando o resumo estruturado para o prontuário.</p>
           </div>
         )}
 
         {appState === AppState.RESULT && summary && (
           <div className="w-full max-w-4xl animate-fadeIn">
             <div className="mb-4 flex justify-between items-center px-2">
-              <span className="text-xs text-slate-400 font-medium">Atalho para copiar: <b className="text-slate-600">{settings.copyKey}</b></span>
-              <button onClick={resetApp} className="text-xs text-blue-600 font-bold hover:underline">NOVA CONSULTA</button>
+              <span className="text-xs text-slate-400 font-medium">Copiar: <b className="text-slate-600">{settings.copyKey}</b></span>
+              <button onClick={resetApp} className="text-xs text-blue-600 font-bold hover:text-blue-800 transition-colors">NOVA CONSULTA</button>
             </div>
             <SummaryCard summary={summary} onReset={resetApp} onCopy={copySummaryText} />
           </div>
         )}
 
         {appState === AppState.ERROR && (
-          <div className="text-center max-w-md">
-            <i className="fas fa-exclamation-circle text-5xl text-red-500 mb-4"></i>
+          <div className="text-center max-w-md animate-fadeIn">
+            <div className="text-red-500 text-6xl mb-4">
+              <i className="fas fa-exclamation-triangle"></i>
+            </div>
             <h2 className="text-xl font-bold text-slate-800">{errorMsg}</h2>
-            <button onClick={resetApp} className="mt-6 bg-blue-600 text-white px-6 py-2 rounded-lg font-bold">Voltar</button>
+            <button onClick={resetApp} className="mt-6 bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-full font-bold transition-colors">
+              Tentar Novamente
+            </button>
           </div>
         )}
       </main>
 
       {showSettings && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs">
-            <h3 className="text-lg font-bold mb-6">Configurar Atalhos</h3>
-            <div className="space-y-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-xs animate-fadeIn">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-bold text-slate-800">Atalhos</h3>
+              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600">
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="space-y-6">
               <div>
-                <label className="text-xs font-bold text-slate-400 uppercase">Gravar/Parar</label>
-                <input 
-                  className="w-full mt-1 bg-slate-50 border p-3 rounded-xl text-center font-mono font-bold cursor-pointer focus:ring-2 ring-blue-500 outline-none"
-                  readOnly value={settings.startStopKey}
-                  onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, startStopKey: e.key}); }}
-                />
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gravar / Parar</label>
+                <div className="relative mt-1">
+                  <input 
+                    className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl text-center font-mono font-bold text-blue-600 focus:border-blue-500 outline-none transition-all cursor-pointer"
+                    readOnly value={settings.startStopKey}
+                    onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, startStopKey: e.key}); }}
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] text-slate-300 pointer-events-none">Pressione a tecla</div>
+                </div>
               </div>
               <div>
-                <label className="text-xs font-bold text-slate-400 uppercase">Copiar Texto</label>
-                <input 
-                  className="w-full mt-1 bg-slate-50 border p-3 rounded-xl text-center font-mono font-bold cursor-pointer focus:ring-2 ring-blue-500 outline-none"
-                  readOnly value={settings.copyKey}
-                  onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, copyKey: e.key}); }}
-                />
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Copiar Resumo</label>
+                <div className="relative mt-1">
+                  <input 
+                    className="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl text-center font-mono font-bold text-blue-600 focus:border-blue-500 outline-none transition-all cursor-pointer"
+                    readOnly value={settings.copyKey}
+                    onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, copyKey: e.key}); }}
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] text-slate-300 pointer-events-none">Pressione a tecla</div>
+                </div>
               </div>
             </div>
-            <button onClick={() => setShowSettings(false)} className="w-full mt-8 bg-blue-600 text-white py-3 rounded-xl font-bold">Salvar e Sair</button>
+            <button onClick={() => setShowSettings(false)} className="w-full mt-8 bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold shadow-lg transition-all active:scale-95">
+              Confirmar
+            </button>
           </div>
         </div>
       )}
 
-      <footer className="p-4 text-center text-[10px] text-slate-400 font-medium uppercase tracking-widest border-t border-slate-100 bg-white">
-        OtoRecord &bull; {new Date().getFullYear()} &bull; Inteligência Médica Segura
+      <footer className="p-6 text-center text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] border-t border-slate-100 bg-white">
+        OtoRecord &bull; {new Date().getFullYear()} &bull; IA Médica
       </footer>
 
       <style>{`
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
       `}</style>
     </div>
   );
