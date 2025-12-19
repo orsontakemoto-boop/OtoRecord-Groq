@@ -12,7 +12,8 @@ const DEFAULT_SETTINGS: AppSettings = {
 const FAREWELL_WORDS = [
   'tchau', 'até mais', 'até logo', 'quando precisar', 
   'me ligue', 'me liga', 'bom descanso', 'obrigado doutor', 
-  'obrigada doutor', 'pode ir', 'tá bom então', 'até a próxima'
+  'obrigada doutor', 'pode ir', 'tá bom então', 'até a próxima',
+  'tá certo doutor', 'muito obrigado', 'tchau tchau'
 ];
 
 const App: React.FC = () => {
@@ -90,33 +91,32 @@ const App: React.FC = () => {
     recognition.interimResults = true;
 
     recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((result: any) => result[0].transcript)
-        .join('')
-        .toLowerCase();
+      // Pegamos apenas a parte mais recente da fala
+      const lastResultIndex = event.results.length - 1;
+      const lastTranscript = event.results[lastResultIndex][0].transcript.toLowerCase();
 
-      // Reset auto-stop timer if new speech is detected
+      // "Ausência de fala": Se qualquer nova fala for detectada, cancelamos o encerramento automático
       if (autoStopTimeoutRef.current) {
         window.clearTimeout(autoStopTimeoutRef.current);
         autoStopTimeoutRef.current = null;
         setIsAutoStopping(false);
       }
 
-      const hasFarewell = FAREWELL_WORDS.some(word => transcript.includes(word));
+      // Verificamos se a frase mais recente contém uma despedida
+      const hasFarewell = FAREWELL_WORDS.some(word => lastTranscript.includes(word));
       
       if (hasFarewell) {
         setIsAutoStopping(true);
-        // Espera 3.5 segundos de silêncio após uma palavra de despedida
+        // Se houver "ausência de fala" (nada novo no onresult) por 4 segundos, encerramos.
         autoStopTimeoutRef.current = window.setTimeout(() => {
           stopRecording();
-          showToast("Consulta encerrada automaticamente.");
-        }, 3500);
+          showToast("Encerrado por ausência de fala após despedida.");
+        }, 4000);
       }
     };
 
     recognition.onerror = () => {
-      // Falha silenciosa no reconhecimento não interrompe a gravação principal
-      console.warn("Speech recognition error - manual stop still available");
+      console.warn("Reconhecimento de voz pausado - parada manual disponível.");
     };
 
     recognition.start();
@@ -154,7 +154,6 @@ HIPÓTESE DIAGNÓSTICA: ${s.hipoteseDiagnostica || 'A investigar'}
 CONDUTA: ${s.conduta}
     `.trim();
     
-    // Tenta usar a API moderna primeiro
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
         showToast("Prontuário copiado!");
@@ -267,7 +266,7 @@ CONDUTA: ${s.conduta}
               <i className="fas fa-microphone"></i>
             </div>
             <h2 className="text-2xl font-bold text-slate-800 mb-2">Nova Consulta</h2>
-            <p className="text-slate-500 mb-8">O app encerrará sozinho ao ouvir palavras de despedida seguidas de silêncio.</p>
+            <p className="text-slate-500 mb-8">Fale naturalmente. O app encerra sozinho ao detectar despedida e ausência de fala.</p>
             <button onClick={startRecording} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-full font-bold shadow-lg flex items-center gap-3 mx-auto transition-transform active:scale-95">
               <i className="fas fa-play"></i> Iniciar Gravação ({settings.startStopKey})
             </button>
@@ -286,7 +285,7 @@ CONDUTA: ${s.conduta}
             
             {isAutoStopping ? (
               <div className="mb-6 px-4 py-2 bg-amber-100 text-amber-700 rounded-full text-sm font-bold animate-bounce inline-block">
-                <i className="fas fa-clock mr-2"></i> Detectando fim da consulta...
+                <i className="fas fa-clock mr-2"></i> Monitorando ausência de fala...
               </div>
             ) : (
               <div className="mb-6 text-slate-400 text-xs font-medium uppercase tracking-widest">
