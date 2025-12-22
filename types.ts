@@ -19,4 +19,5 @@ export enum AppState {
 export interface AppSettings {
   startStopKey: string;
   copyKey: string;
+  selectedDeviceId?: string;
 }

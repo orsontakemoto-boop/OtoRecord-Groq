@@ -6,7 +6,8 @@ import SummaryCard from './components/SummaryCard';
 
 const DEFAULT_SETTINGS: AppSettings = {
   startStopKey: 'F5',
-  copyKey: 'F6'
+  copyKey: 'F6',
+  selectedDeviceId: ''
 };
 
 const IMMEDIATE_STOP_WORDS = ['tchau', 'tchau-tchau', 'tchau tchau'];
@@ -57,6 +58,7 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [isAutoStopping, setIsAutoStopping] = useState(false);
   const [isPausedBySilence, setIsPausedBySilence] = useState(false);
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   
   const [apiKey, setApiKey] = useState<string>(() => safeGetItem('otoRecordApiKey') || '');
   const [tempApiKey, setTempApiKey] = useState('');
@@ -91,6 +93,28 @@ const App: React.FC = () => {
   useEffect(() => { appStateRef.current = appState; }, [appState]);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { apiKeyRef.current = apiKey; }, [apiKey]);
+
+  // Carrega lista de dispositivos quando abre configurações
+  useEffect(() => {
+    if (showSettings) {
+      getAudioDevices();
+    }
+  }, [showSettings]);
+
+  const getAudioDevices = async () => {
+    try {
+      // Pede permissão temporária se necessário para listar os labels
+      await navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+          stream.getTracks().forEach(track => track.stop());
+      }).catch(() => {}); // Ignora erro se usuário negar, apenas lista o que der
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(device => device.kind === 'audioinput');
+      setAudioDevices(audioInputs);
+    } catch (err) {
+      console.error("Erro ao listar dispositivos:", err);
+    }
+  };
 
   const saveApiKey = (key: string) => {
     const cleanKey = key.trim();
@@ -189,7 +213,14 @@ const App: React.FC = () => {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Configuração de constraint para escolher o microfone
+      const constraints: MediaStreamConstraints = { 
+        audio: settingsRef.current.selectedDeviceId 
+          ? { deviceId: { exact: settingsRef.current.selectedDeviceId } }
+          : true 
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       const mimeType = getSupportedMimeType();
       mimeTypeRef.current = mimeType;
       
@@ -233,7 +264,7 @@ const App: React.FC = () => {
 
     } catch (err) {
       console.error(err);
-      setErrorMsg("Erro ao acessar o microfone. Verifique permissões e hardware.");
+      setErrorMsg("Erro ao acessar o microfone. Verifique permissões ou se o dispositivo está em uso.");
       setAppState(AppState.ERROR);
     }
   };
@@ -621,6 +652,30 @@ CONDUTA: ${s.conduta}
                   <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-xs text-blue-500 underline hover:text-blue-700">Obter chave grátis</a>
                 </div>
               </div>
+
+              {/* Seção Seleção de Microfone (NOVO) */}
+              {apiKey && (
+                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                   <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                     <i className="fas fa-microphone-lines"></i> Microfone
+                   </h4>
+                   <select 
+                     className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 outline-none focus:ring-2 ring-blue-500"
+                     value={settings.selectedDeviceId || ''}
+                     onChange={(e) => saveSettings({...settings, selectedDeviceId: e.target.value})}
+                   >
+                     <option value="">Padrão do Sistema</option>
+                     {audioDevices.map((device) => (
+                       <option key={device.deviceId} value={device.deviceId}>
+                         {device.label || `Microfone ${device.deviceId.slice(0,5)}...`}
+                       </option>
+                     ))}
+                   </select>
+                   <p className="text-[10px] text-slate-400 mt-2">
+                     Use microfones diferentes para rodar dois apps ao mesmo tempo.
+                   </p>
+                 </div>
+              )}
 
               {/* Seção Atalhos */}
               {apiKey && (
