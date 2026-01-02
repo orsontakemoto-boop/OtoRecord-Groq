@@ -20,4 +20,5 @@ export interface AppSettings {
   startStopKey: string;
   copyKey: string;
   selectedDeviceId?: string;
+  inputGain?: number;
 }

@@ -1,4 +1,3 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -14,14 +13,33 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Interface for ErrorBoundary props
+interface ErrorBoundaryProps {
+  children?: React.ReactNode;
+}
+
+// Interface for ErrorBoundary state
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
 // Componente simples de Error Boundary para capturar falhas globais
-class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
-  constructor(props: {children: React.ReactNode}) {
+// Fix: Use standard class component structure with explicit generics and constructor 
+// to ensure the TypeScript compiler correctly inherits 'props' and 'state' from React.Component.
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Explicitly declare state and props members to resolve "Property 'state/props' does not exist on type 'ErrorBoundary'" errors
+  public state: ErrorBoundaryState;
+  public props: ErrorBoundaryProps;
+
+  // Fix: Explicitly initializing state in the constructor and calling super(props) 
+  // to ensure 'this.props' is correctly bound and typed.
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error) {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
@@ -30,6 +48,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
   }
 
   render() {
+    // Fix: Accessing this.state is now correctly recognized by the TypeScript compiler
     if (this.state.hasError) {
       return (
         <div style={{ padding: '20px', fontFamily: 'sans-serif', color: '#333', textAlign: 'center', marginTop: '50px' }}>
@@ -48,6 +67,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
       );
     }
 
+    // Fix: Accessing children through this.props is now correctly recognized by the TypeScript compiler
     return this.props.children;
   }
 }
@@ -60,6 +80,7 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
+    {/* Fix: Usage of ErrorBoundary with proper typing ensures children are accepted correctly */}
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
