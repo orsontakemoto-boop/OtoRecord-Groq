@@ -1,16 +1,31 @@
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-// Força a limpeza de Service Workers antigos
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const registration of registrations) {
-      registration.unregister();
+// Força a limpeza de Service Workers antigos de forma segura
+const cleanupServiceWorkers = async () => {
+  if ('serviceWorker' in navigator) {
+    try {
+      // Usamos getRegistrations para limpar workers de versões anteriores ou conflitos
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const registration of registrations) {
+        await registration.unregister();
+      }
+    } catch (err) {
+      // Silenciosamente ignora erros de "invalid state" que podem ocorrer em iframes ou ambientes de preview
+      if (!(err instanceof Error && (err.message.includes('invalid state') || err.message.includes('Document is in an invalid state')))) {
+        console.error('Erro ao limpar SW:', err);
+      }
     }
-  }).catch((err) => {
-    console.error('Erro ao limpar SW:', err);
-  });
+  }
+};
+
+// Executa limpeza quando a janela estiver totalmente carregada para evitar erros de estado do documento
+if (document.readyState === 'complete') {
+  cleanupServiceWorkers();
+} else {
+  window.addEventListener('load', cleanupServiceWorkers);
 }
 
 // Interface for ErrorBoundary props
@@ -25,19 +40,9 @@ interface ErrorBoundaryState {
 }
 
 // Componente simples de Error Boundary para capturar falhas globais
-// Fix: Use standard class component structure with explicit generics and constructor 
-// to ensure the TypeScript compiler correctly inherits 'props' and 'state' from React.Component.
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly declare state and props members to resolve "Property 'state/props' does not exist on type 'ErrorBoundary'" errors
-  public state: ErrorBoundaryState;
-  public props: ErrorBoundaryProps;
-
-  // Fix: Explicitly initializing state in the constructor and calling super(props) 
-  // to ensure 'this.props' is correctly bound and typed.
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+  // Explicitly declare state and props to resolve TS errors
+  public state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
@@ -48,7 +53,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
-    // Fix: Accessing this.state is now correctly recognized by the TypeScript compiler
     if (this.state.hasError) {
       return (
         <div style={{ padding: '20px', fontFamily: 'sans-serif', color: '#333', textAlign: 'center', marginTop: '50px' }}>
@@ -67,7 +71,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
-    // Fix: Accessing children through this.props is now correctly recognized by the TypeScript compiler
     return this.props.children;
   }
 }
@@ -80,7 +83,6 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    {/* Fix: Usage of ErrorBoundary with proper typing ensures children are accepted correctly */}
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
