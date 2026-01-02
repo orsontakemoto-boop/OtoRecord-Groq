@@ -51,8 +51,9 @@ const App: React.FC = () => {
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [currentLevel, setCurrentLevel] = useState(0);
   
-  // Note: API Key state and UI removed as per Gemini SDK guidelines.
-  // The app exclusively uses process.env.API_KEY.
+  // BYOK: Recuperação da chave manual
+  const [apiKeyInput, setApiKeyInput] = useState(() => safeGetItem('GEMINI_API_KEY') || '');
+  const [hasStoredKey, setHasStoredKey] = useState(() => !!safeGetItem('GEMINI_API_KEY'));
   
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
@@ -93,6 +94,16 @@ const App: React.FC = () => {
       gainNodeRef.current.gain.setTargetAtTime(settings.inputGain || 1.0, audioContextRef.current?.currentTime || 0, 0.1);
     }
   }, [settings.inputGain]);
+
+  const handleSaveKey = () => {
+    if (apiKeyInput.trim()) {
+      safeSetItem('GEMINI_API_KEY', apiKeyInput.trim());
+      setHasStoredKey(true);
+      showToast("Chave salva com sucesso!");
+    } else {
+      showToast("Por favor, insira uma chave válida.");
+    }
+  };
 
   const getAudioDevices = async () => {
     try {
@@ -306,7 +317,7 @@ const App: React.FC = () => {
           console.error("Erro no processamento:", innerError);
           const msg = innerError.message || "";
           if (msg.includes("401") || msg.includes("invalid key") || msg.includes("API_KEY_INVALID")) {
-            setErrorMsg("Chave API inválida ou não configurada.");
+            setErrorMsg("Chave API inválida. Verifique em Configurações.");
           } else {
             setErrorMsg(msg || "Erro no processamento.");
           }
@@ -384,6 +395,60 @@ CONDUTA: ${summary.conduta}
     setSettings(newSettings);
     safeSetItem('otoRecordSettings', JSON.stringify(newSettings));
   };
+
+  const ApiKeySection = () => (
+    <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <i className="fas fa-key text-blue-600 text-sm"></i>
+        <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Chave de API Gemini</h4>
+      </div>
+      <p className="text-xs text-slate-500 mb-4">
+        Sua chave é armazenada localmente no seu navegador.
+      </p>
+      <div className="flex gap-2">
+        <input 
+          type="password" 
+          placeholder="Insira sua chave aqui..."
+          className="flex-1 px-4 py-2.5 bg-white border border-blue-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          value={apiKeyInput}
+          onChange={(e) => setApiKeyInput(e.target.value)}
+        />
+        <button 
+          onClick={handleSaveKey}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all active:scale-95"
+        >
+          Salvar
+        </button>
+      </div>
+      <div className="text-right mt-3">
+        <a 
+          href="https://aistudio.google.com/app/apikey" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="text-[10px] font-bold text-blue-600 hover:underline uppercase tracking-tight"
+        >
+          Obter chave grátis
+        </a>
+      </div>
+    </div>
+  );
+
+  if (!hasStoredKey) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+        <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-md w-full border border-blue-50 animate-fadeIn">
+          <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 text-white text-2xl shadow-lg shadow-blue-200">
+            <i className="fas fa-ear-listen"></i>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-800 mb-2">Bem-vindo ao OtoRecord</h1>
+          <p className="text-slate-500 mb-8 text-sm">
+            Para iniciar, configure sua própria chave de API. Cada médico utiliza sua cota individual para garantir performance.
+          </p>
+          <ApiKeySection />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -467,10 +532,6 @@ CONDUTA: ${summary.conduta}
             <button onClick={stopRecording} className="bg-slate-800 text-white px-10 py-4 rounded-full font-bold shadow-lg active:scale-95 w-full mb-4">
               Finalizar Agora
             </button>
-            
-            <p className="text-xs text-slate-400 font-medium">
-              {isPausedBySilence ? "Pausado: Aguardando voz..." : "Gravando áudio..."}
-            </p>
           </div>
         )}
 
@@ -478,7 +539,6 @@ CONDUTA: ${summary.conduta}
           <div className="text-center py-10">
             <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
             <h2 className="text-xl font-bold">Processando Prontuário...</h2>
-            <p className="text-slate-500 text-sm mt-2">Isso pode levar alguns segundos dependendo do tamanho do áudio.</p>
           </div>
         )}
 
@@ -508,6 +568,8 @@ CONDUTA: ${summary.conduta}
             </div>
             
             <div className="space-y-6">
+              <ApiKeySection />
+
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Selecionar Microfone</label>
                 <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" value={settings.selectedDeviceId || ''} onChange={(e) => saveSettings({...settings, selectedDeviceId: e.target.value})}>

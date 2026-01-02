@@ -2,12 +2,20 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { ConsultationSummary } from "../types";
 
-// Note: API Key must be obtained exclusively from process.env.API_KEY.
-// UI elements for entering the key are strictly prohibited.
+// Função para obter a chave da API (Prioriza localStorage para BYOK)
+const getApiKey = () => {
+  try {
+    return localStorage.getItem('GEMINI_API_KEY') || process.env.API_KEY || "";
+  } catch (e) {
+    return process.env.API_KEY || "";
+  }
+};
 
 export async function processConsultationAudio(audioBase64: string, mimeType: string): Promise<ConsultationSummary> {
-  // Fix: Always use process.env.API_KEY for initializing GoogleGenAI.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("Chave API não configurada. Por favor, acesse Configurações.");
+  
+  const ai = new GoogleGenAI({ apiKey });
   
   const systemInstruction = `
     Você é um assistente médico especializado em Otorrinolaringologia. 
@@ -29,7 +37,6 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
       setTimeout(() => reject(new Error("TIMEOUT")), timeoutLimit)
     );
 
-    // Fix: Using gemini-3-pro-preview for complex reasoning task as per model selection guidelines.
     const apiCall = ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: {
@@ -63,7 +70,6 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
 
     const response = await Promise.race([apiCall, timeoutPromise]) as GenerateContentResponse;
 
-    // Fix: Accessing .text property directly (not as a method).
     const resultText = response.text;
     if (!resultText) throw new Error("A IA retornou uma resposta vazia.");
     
