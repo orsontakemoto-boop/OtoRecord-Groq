@@ -2,20 +2,12 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { ConsultationSummary } from "../types";
 
-// Função para obter a chave da API (Prioriza localStorage para BYOK)
-const getApiKey = () => {
-  try {
-    return localStorage.getItem('GEMINI_API_KEY') || process.env.API_KEY || "";
-  } catch (e) {
-    return process.env.API_KEY || "";
+export async function processConsultationAudio(audioBase64: string, mimeType: string, apiKey: string): Promise<ConsultationSummary> {
+  if (!apiKey) {
+    throw new Error("Chave de API não configurada.");
   }
-};
 
-export async function processConsultationAudio(audioBase64: string, mimeType: string): Promise<ConsultationSummary> {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("Chave API não configurada. Por favor, acesse Configurações.");
-  
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: apiKey });
   
   const systemInstruction = `
     Você é um assistente médico especializado em Otorrinolaringologia. 
@@ -32,13 +24,15 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
   `;
 
   try {
-    const timeoutLimit = 95000; 
+    // Criação de uma promessa de Timeout para evitar loops infinitos
+    const timeoutLimit = 90000; // 90 segundos (áudios longos demoram processar)
     const timeoutPromise = new Promise<never>((_, reject) => 
       setTimeout(() => reject(new Error("TIMEOUT")), timeoutLimit)
     );
 
+    // Chamada da API
     const apiCall = ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           {
@@ -68,6 +62,7 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
       }
     });
 
+    // Promise.race vai resolver quem terminar primeiro: a API ou o Timeout
     const response = await Promise.race([apiCall, timeoutPromise]) as GenerateContentResponse;
 
     const resultText = response.text;
@@ -78,20 +73,27 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
   } catch (error: any) {
     console.error("Erro detalhado no Gemini:", error);
 
+    // Tratamento de erros específicos para feedback ao usuário
     if (error.message === "TIMEOUT") {
-      throw new Error("O processamento demorou muito. Áudios muito longos podem exceder o limite da API.");
+      throw new Error("O processamento demorou muito. Verifique sua internet ou tente um áudio mais curto.");
     }
     
+    // Verificação genérica de erros (Duck typing para evitar imports quebrados)
+    const status = error.status || 0;
     const msg = error.message || JSON.stringify(error);
 
-    if (msg.includes("401") || msg.includes("invalid key") || msg.includes("API_KEY_INVALID")) {
-      throw new Error("Chave de API inválida ou expirada. Verifique suas configurações.");
+    if (status === 429 || msg.includes("429") || msg.includes("Quota exceeded") || msg.includes("Resource has been exhausted")) {
+      throw new Error("Limite de cota da SUA chave atingido. Verifique seu plano no Google AI Studio.");
     }
 
-    if (msg.includes("429") || msg.includes("Quota exceeded")) {
-      throw new Error("Limite de cota atingido na sua chave API gratuita. Tente novamente em instantes.");
+    if (status === 400 || msg.includes("API_KEY_INVALID") || msg.includes("400")) {
+      throw new Error("Chave de API inválida. Verifique as configurações.");
     }
 
-    throw new Error(`Falha no processamento: ${msg.substring(0, 100)}...`);
+    if (status === 503 || msg.includes("503") || msg.includes("overloaded")) {
+      throw new Error("Serviço da IA temporariamente sobrecarregado. Tente novamente em instantes.");
+    }
+
+    throw new Error(`Falha na comunicação com a IA: ${msg.substring(0, 100)}...`);
   }
 }

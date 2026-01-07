@@ -1,48 +1,37 @@
-
-import React from 'react';
+import React, { Component } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
 // Força a limpeza de Service Workers antigos de forma segura
-const cleanupServiceWorkers = async () => {
-  if ('serviceWorker' in navigator) {
-    try {
-      // Usamos getRegistrations para limpar workers de versões anteriores ou conflitos
-      const registrations = await navigator.serviceWorker.getRegistrations();
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
       for (const registration of registrations) {
-        await registration.unregister();
+        registration.unregister();
       }
-    } catch (err) {
-      // Silenciosamente ignora erros de "invalid state" que podem ocorrer em iframes ou ambientes de preview
-      if (!(err instanceof Error && (err.message.includes('invalid state') || err.message.includes('Document is in an invalid state')))) {
-        console.error('Erro ao limpar SW:', err);
-      }
-    }
-  }
-};
-
-// Executa limpeza quando a janela estiver totalmente carregada para evitar erros de estado do documento
-if (document.readyState === 'complete') {
-  cleanupServiceWorkers();
-} else {
-  window.addEventListener('load', cleanupServiceWorkers);
+    }).catch((err) => {
+      console.error('Erro ao limpar SW:', err);
+    });
+  });
 }
 
-// Interface for ErrorBoundary props
 interface ErrorBoundaryProps {
   children?: React.ReactNode;
 }
 
-// Interface for ErrorBoundary state
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
 }
 
 // Componente simples de Error Boundary para capturar falhas globais
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly declare state and props to resolve TS errors
-  public state: ErrorBoundaryState = { hasError: false, error: null };
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState;
+
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
