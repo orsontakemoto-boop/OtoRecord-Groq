@@ -13,6 +13,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ summary, onReset, onCopy }) =
     { label: 'Identificação', value: summary.pacienteInfo, icon: 'fa-user' },
     { label: 'Queixa Principal', value: summary.queixaPrincipal, icon: 'fa-comment-medical' },
     { label: 'HDA', value: summary.hda, icon: 'fa-history' },
+    { label: 'Antecedentes', value: summary.antecedentes, icon: 'fa-notes-medical' },
     { label: 'Exame Físico', value: summary.exameFisico, icon: 'fa-stethoscope' },
     { label: 'Hipótese Diagnóstica', value: summary.hipoteseDiagnostica, icon: 'fa-lightbulb' },
     { label: 'Conduta', value: summary.conduta, icon: 'fa-file-medical' },
@@ -25,13 +26,13 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ summary, onReset, onCopy }) =
           <i className="fas fa-file-alt"></i> Resumo da Anamnese
         </h2>
         <div className="flex gap-2">
-          <button 
+          <button
             onClick={onCopy}
             className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm transition-all flex items-center gap-2"
           >
             <i className="fas fa-copy"></i> Copiar
           </button>
-          <button 
+          <button
             onClick={onReset}
             className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm transition-all flex items-center gap-2"
           >
@@ -39,7 +40,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ summary, onReset, onCopy }) =
           </button>
         </div>
       </div>
-      
+
       <div className="p-6 space-y-6">
         {sections.map((section, idx) => (
           <div key={idx} className="border-b border-slate-50 last:border-0 pb-4 last:pb-0">
@@ -52,7 +53,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ summary, onReset, onCopy }) =
           </div>
         ))}
       </div>
-      
+
       <div className="bg-slate-50 p-4 text-center">
         <p className="text-xs text-slate-500">
           Gerado automaticamente via IA OtoRecord. Revise as informações antes de anexar ao prontuário oficial.

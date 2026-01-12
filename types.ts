@@ -3,6 +3,7 @@ export interface ConsultationSummary {
   pacienteInfo: string;
   queixaPrincipal: string;
   hda: string;
+  antecedentes: string;
   exameFisico: string;
   hipoteseDiagnostica: string;
   conduta: string;

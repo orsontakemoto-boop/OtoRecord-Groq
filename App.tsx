@@ -22,8 +22,8 @@ const normalizeText = (text: string) => {
 
 const IMMEDIATE_STOP_WORDS = [
   'tchau', 'xau', 'ciao', // Variações fonéticas do tchau
-  'encerrar', 'encerrar consulta', 'encerrar atendimento', 
-  'finalizar', 'finalizar consulta', 
+  'encerrar', 'encerrar consulta', 'encerrar atendimento',
+  'finalizar', 'finalizar consulta',
   'terminar', 'terminar consulta',
   'parar gravacao'
 ];
@@ -31,11 +31,11 @@ const IMMEDIATE_STOP_WORDS = [
 const FAREWELL_WORDS = [
   ...IMMEDIATE_STOP_WORDS,
   'ate mais', 'ate logo', 'ate amanha', // Sem acentos devido à normalização
-  'quando precisar', 
-  'me ligue', 'me liga', 
-  'bom descanso', 
-  'obrigado doutor', 'obrigada doutor', 
-  'pode ir', 
+  'quando precisar',
+  'me ligue', 'me liga',
+  'bom descanso',
+  'obrigado doutor', 'obrigada doutor',
+  'pode ir',
   'ta bom entao', 'ta certo doutor', // Sem acentos
   'muito obrigado'
 ];
@@ -79,10 +79,10 @@ const App: React.FC = () => {
   const [isAutoStopping, setIsAutoStopping] = useState(false);
   const [isPausedBySilence, setIsPausedBySilence] = useState(false);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
-  
+
   const [apiKey, setApiKey] = useState<string>(() => safeGetItem('otoRecordApiKey') || '');
   const [tempApiKey, setTempApiKey] = useState('');
-  
+
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
       const saved = safeGetItem('otoRecordSettings');
@@ -91,7 +91,7 @@ const App: React.FC = () => {
       return DEFAULT_SETTINGS;
     }
   });
-  
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const mimeTypeRef = useRef<string>(''); // Para guardar o tipo de áudio real usado
@@ -105,7 +105,7 @@ const App: React.FC = () => {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const silenceStartRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
-  
+
   const appStateRef = useRef(appState);
   const settingsRef = useRef(settings);
   const apiKeyRef = useRef(apiKey);
@@ -125,8 +125,8 @@ const App: React.FC = () => {
     try {
       // Pede permissão temporária se necessário para listar os labels
       await navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-          stream.getTracks().forEach(track => track.stop());
-      }).catch(() => {}); // Ignora erro se usuário negar, apenas lista o que der
+        stream.getTracks().forEach(track => track.stop());
+      }).catch(() => { }); // Ignora erro se usuário negar, apenas lista o que der
 
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter(device => device.kind === 'audioinput');
@@ -158,9 +158,9 @@ const App: React.FC = () => {
 
   const stopRecording = useCallback(() => {
     if (appStateRef.current !== AppState.RECORDING) return;
-    
+
     console.log("Parando gravação...");
-    
+
     // Parar reconhecimento de fala
     if (recognitionRef.current) {
       recognitionRef.current.onend = null;
@@ -172,7 +172,7 @@ const App: React.FC = () => {
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close().catch(console.error);
     }
-    
+
     // Parar gravador
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
@@ -234,19 +234,19 @@ const App: React.FC = () => {
 
     try {
       // Configuração de constraint para escolher o microfone
-      const constraints: MediaStreamConstraints = { 
-        audio: settingsRef.current.selectedDeviceId 
+      const constraints: MediaStreamConstraints = {
+        audio: settingsRef.current.selectedDeviceId
           ? { deviceId: { exact: settingsRef.current.selectedDeviceId } }
-          : true 
+          : true
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       const mimeType = getSupportedMimeType();
       mimeTypeRef.current = mimeType;
-      
+
       const options = mimeType ? { mimeType } : undefined;
       const recorder = new MediaRecorder(stream, options);
-      
+
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
@@ -265,10 +265,10 @@ const App: React.FC = () => {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const analyser = audioContext.createAnalyser();
       const source = audioContext.createMediaStreamSource(stream);
-      
+
       analyser.fftSize = 256;
       source.connect(analyser);
-      
+
       audioContextRef.current = audioContext;
       analyserRef.current = analyser;
       sourceRef.current = source;
@@ -278,7 +278,7 @@ const App: React.FC = () => {
       setAppState(AppState.RECORDING);
       startTimer();
       initSpeechRecognition();
-      
+
       // Inicia loop VAD
       analyzeAudio();
 
@@ -306,10 +306,10 @@ const App: React.FC = () => {
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         latestTranscript += event.results[i][0].transcript;
       }
-      
+
       // Normalização: remove acentos e pontuação para garantir o match
       const text = normalizeText(latestTranscript);
-      
+
       // Failsafe: Se reconheceu texto, retoma gravação se estiver pausada
       if (text.length > 0 && mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
         mediaRecorderRef.current.resume();
@@ -324,7 +324,7 @@ const App: React.FC = () => {
 
       // Verifica palavras de parada imediata
       const hasImmediateTrigger = IMMEDIATE_STOP_WORDS.some(word => text.includes(word));
-      
+
       if (hasImmediateTrigger) {
         setIsAutoStopping(true);
         console.log(`Comando de parada detectado no texto: "${text}"`);
@@ -352,7 +352,7 @@ const App: React.FC = () => {
 
     recognition.onend = () => {
       if (appStateRef.current === AppState.RECORDING) {
-        try { recognition.start(); } catch(e) {}
+        try { recognition.start(); } catch (e) { }
       }
     };
 
@@ -370,7 +370,7 @@ const App: React.FC = () => {
           const base64Audio = (reader.result as string).split(',')[1];
           // Usa o mimeType real detectado na gravação
           const mimeType = mimeTypeRef.current || 'audio/webm';
-          
+
           const result = await processConsultationAudio(base64Audio, mimeType, apiKeyRef.current);
           setSummary(result);
           setAppState(AppState.RESULT);
@@ -394,7 +394,7 @@ const App: React.FC = () => {
   };
 
   const copySummaryText = useCallback(() => {
-    const s = summary; 
+    const s = summary;
     if (!s) return;
     const text = `
 PRONTUÁRIO OTORRINOLARINGOLÓGICO
@@ -402,11 +402,12 @@ PRONTUÁRIO OTORRINOLARINGOLÓGICO
 IDENTIFICAÇÃO: ${s.pacienteInfo || 'N/A'}
 QUEIXA PRINCIPAL: ${s.queixaPrincipal}
 HDA: ${s.hda}
+ANTECEDENTES: ${s.antecedentes || 'Não relatado'}
 EXAME FÍSICO: ${s.exameFisico || 'Não registrado'}
 HIPÓTESE DIAGNÓSTICA: ${s.hipoteseDiagnostica || 'A investigar'}
 CONDUTA: ${s.conduta}
     `.trim();
-    
+
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
         showToast("Prontuário copiado!");
@@ -519,29 +520,29 @@ CONDUTA: ${s.conduta}
 
       <main className="flex-1 p-6 flex flex-col items-center justify-center">
         {(!apiKey && !showSettings) && (
-           <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-8 text-center animate-fadeIn">
-             <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-6 text-3xl">
-               <i className="fas fa-key"></i>
-             </div>
-             <h2 className="text-2xl font-bold text-slate-800 mb-2">Bem-vindo ao OtoRecord</h2>
-             <p className="text-slate-500 mb-8 max-w-md">
-               Para garantir privacidade e desempenho, este aplicativo requer sua própria <strong>Chave de API do Google Gemini</strong>.
-             </p>
-             <button 
-               onClick={() => setShowSettings(true)} 
-               className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 transition-transform active:scale-95"
-             >
-               Configurar Minha Chave <i className="fas fa-arrow-right"></i>
-             </button>
-             <a 
-               href="https://aistudio.google.com/app/apikey" 
-               target="_blank" 
-               rel="noreferrer"
-               className="mt-6 text-sm text-blue-500 hover:underline"
-             >
-               Não tem uma chave? Crie uma aqui gratuitamente.
-             </a>
-           </div>
+          <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-8 text-center animate-fadeIn">
+            <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-6 text-3xl">
+              <i className="fas fa-key"></i>
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Bem-vindo ao OtoRecord</h2>
+            <p className="text-slate-500 mb-8 max-w-md">
+              Para garantir privacidade e desempenho, este aplicativo requer sua própria <strong>Chave de API do Google Gemini</strong>.
+            </p>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 transition-transform active:scale-95"
+            >
+              Configurar Minha Chave <i className="fas fa-arrow-right"></i>
+            </button>
+            <a
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-6 text-sm text-blue-500 hover:underline"
+            >
+              Não tem uma chave? Crie uma aqui gratuitamente.
+            </a>
+          </div>
         )}
 
         {appState === AppState.IDLE && apiKey && (
@@ -553,8 +554,8 @@ CONDUTA: ${s.conduta}
             <p className="text-slate-500 mb-8">
               Fale <span className="font-bold text-blue-600">"Encerrar"</span> ou <span className="font-bold text-blue-600">"Tchau"</span> para finalizar.
             </p>
-            <button 
-              onClick={startRecording} 
+            <button
+              onClick={startRecording}
               className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-full font-bold shadow-lg flex items-center gap-3 mx-auto transition-all active:scale-95"
             >
               <i className="fas fa-play"></i> Iniciar ({settings.startStopKey})
@@ -564,7 +565,7 @@ CONDUTA: ${s.conduta}
 
         {appState === AppState.RECORDING && (
           <div className="text-center">
-            
+
             {/* Indicador Visual do Estado (Gravando vs Pausado por Silêncio) */}
             <div className={`w-32 h-32 rounded-full flex items-center justify-center mx-auto mb-6 relative shadow-inner transition-colors duration-500 ${isPausedBySilence ? 'bg-amber-100' : 'bg-red-100'}`}>
               <i className={`fas text-4xl transition-colors duration-500 ${isPausedBySilence ? 'fa-microphone-slash text-amber-500' : 'fa-microphone text-red-500 animate-pulse'}`}></i>
@@ -576,7 +577,7 @@ CONDUTA: ${s.conduta}
             <div className={`text-5xl font-mono font-bold mb-4 tabular-nums transition-colors duration-300 ${isPausedBySilence ? 'text-amber-500' : 'text-slate-800'}`}>
               {Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, '0')}
             </div>
-            
+
             {isAutoStopping ? (
               <div className="mb-6 px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-bold animate-bounce inline-block border border-blue-200">
                 <i className="fas fa-check mr-2"></i> Encerrando consulta...
@@ -593,8 +594,8 @@ CONDUTA: ${s.conduta}
             )}
 
             <div>
-              <button 
-                onClick={stopRecording} 
+              <button
+                onClick={stopRecording}
                 className="bg-slate-800 hover:bg-slate-900 text-white px-10 py-4 rounded-full font-bold shadow-lg active:scale-95 transition-all"
               >
                 Parar Manual ({settings.startStopKey})
@@ -648,7 +649,7 @@ CONDUTA: ${s.conduta}
                 </button>
               )}
             </div>
-            
+
             <div className="space-y-8">
               {/* Seção API Key */}
               <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
@@ -659,14 +660,14 @@ CONDUTA: ${s.conduta}
                   Sua chave é armazenada localmente no seu navegador.
                 </p>
                 <div className="flex gap-2">
-                  <input 
+                  <input
                     type="password"
                     className="flex-1 bg-white border border-blue-200 p-3 rounded-xl text-sm font-mono outline-none focus:ring-2 ring-blue-500"
                     placeholder="Cole sua chave aqui (AIza...)"
                     defaultValue={apiKey}
                     onChange={(e) => setTempApiKey(e.target.value)}
                   />
-                  <button 
+                  <button
                     onClick={() => saveApiKey(tempApiKey || apiKey)}
                     className="bg-blue-600 text-white px-4 rounded-xl font-bold hover:bg-blue-700"
                   >
@@ -680,26 +681,26 @@ CONDUTA: ${s.conduta}
 
               {/* Seção Seleção de Microfone (NOVO) */}
               {apiKey && (
-                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                   <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-                     <i className="fas fa-microphone-lines"></i> Microfone
-                   </h4>
-                   <select 
-                     className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 outline-none focus:ring-2 ring-blue-500"
-                     value={settings.selectedDeviceId || ''}
-                     onChange={(e) => saveSettings({...settings, selectedDeviceId: e.target.value})}
-                   >
-                     <option value="">Padrão do Sistema</option>
-                     {audioDevices.map((device) => (
-                       <option key={device.deviceId} value={device.deviceId}>
-                         {device.label || `Microfone ${device.deviceId.slice(0,5)}...`}
-                       </option>
-                     ))}
-                   </select>
-                   <p className="text-[10px] text-slate-400 mt-2">
-                     Use microfones diferentes para rodar dois apps ao mesmo tempo.
-                   </p>
-                 </div>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                    <i className="fas fa-microphone-lines"></i> Microfone
+                  </h4>
+                  <select
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 outline-none focus:ring-2 ring-blue-500"
+                    value={settings.selectedDeviceId || ''}
+                    onChange={(e) => saveSettings({ ...settings, selectedDeviceId: e.target.value })}
+                  >
+                    <option value="">Padrão do Sistema</option>
+                    {audioDevices.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label || `Microfone ${device.deviceId.slice(0, 5)}...`}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-2">
+                    Use microfones diferentes para rodar dois apps ao mesmo tempo.
+                  </p>
+                </div>
               )}
 
               {/* Seção Atalhos */}
@@ -710,20 +711,20 @@ CONDUTA: ${s.conduta}
                     <div>
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gravar / Parar</label>
                       <div className="relative mt-1">
-                        <input 
+                        <input
                           className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl text-center font-mono font-bold text-slate-600 focus:border-blue-500 outline-none transition-all cursor-pointer text-sm"
                           readOnly value={settings.startStopKey}
-                          onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, startStopKey: e.key}); }}
+                          onKeyDown={(e) => { e.preventDefault(); saveSettings({ ...settings, startStopKey: e.key }); }}
                         />
                       </div>
                     </div>
                     <div>
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Copiar Resumo</label>
                       <div className="relative mt-1">
-                        <input 
+                        <input
                           className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl text-center font-mono font-bold text-slate-600 focus:border-blue-500 outline-none transition-all cursor-pointer text-sm"
                           readOnly value={settings.copyKey}
-                          onKeyDown={(e) => { e.preventDefault(); saveSettings({...settings, copyKey: e.key}); }}
+                          onKeyDown={(e) => { e.preventDefault(); saveSettings({ ...settings, copyKey: e.key }); }}
                         />
                       </div>
                     </div>

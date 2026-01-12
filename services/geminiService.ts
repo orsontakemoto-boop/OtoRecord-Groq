@@ -8,7 +8,7 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
   }
 
   const ai = new GoogleGenAI({ apiKey: apiKey });
-  
+
   const systemInstruction = `
     Você é um assistente médico especializado em Otorrinolaringologia. 
     Analise o áudio da consulta e gere um resumo estruturado para o prontuário médico.
@@ -18,6 +18,7 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
     - pacienteInfo: Identificação básica se mencionada (nome, idade, etc).
     - queixaPrincipal: O motivo principal da consulta.
     - hda: História da Doença Atual (tempo de evolução, sintomas associados, fatores de melhora/piora).
+    - antecedentes: Comorbidades, fatores de risco, alergias, histórico familiar e pessoal.
     - exameFisico: Achados do exame físico mencionados (otoscopia, rinoscopia, oroscopia).
     - hipoteseDiagnostica: Suspeitas diagnósticas baseadas no relato.
     - conduta: Orientações, prescrições e pedidos de exames.
@@ -26,7 +27,7 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
   try {
     // Criação de uma promessa de Timeout para evitar loops infinitos
     const timeoutLimit = 90000; // 90 segundos (áudios longos demoram processar)
-    const timeoutPromise = new Promise<never>((_, reject) => 
+    const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error("TIMEOUT")), timeoutLimit)
     );
 
@@ -53,11 +54,12 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
             pacienteInfo: { type: Type.STRING },
             queixaPrincipal: { type: Type.STRING },
             hda: { type: Type.STRING },
+            antecedentes: { type: Type.STRING },
             exameFisico: { type: Type.STRING },
             hipoteseDiagnostica: { type: Type.STRING },
             conduta: { type: Type.STRING }
           },
-          propertyOrdering: ["pacienteInfo", "queixaPrincipal", "hda", "exameFisico", "hipoteseDiagnostica", "conduta"],
+          propertyOrdering: ["pacienteInfo", "queixaPrincipal", "hda", "antecedentes", "exameFisico", "hipoteseDiagnostica", "conduta"],
         }
       }
     });
@@ -67,7 +69,7 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
 
     const resultText = response.text;
     if (!resultText) throw new Error("A IA retornou uma resposta vazia.");
-    
+
     return JSON.parse(resultText) as ConsultationSummary;
 
   } catch (error: any) {
@@ -77,7 +79,7 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
     if (error.message === "TIMEOUT") {
       throw new Error("O processamento demorou muito. Verifique sua internet ou tente um áudio mais curto.");
     }
-    
+
     // Verificação genérica de erros (Duck typing para evitar imports quebrados)
     const status = error.status || 0;
     const msg = error.message || JSON.stringify(error);
