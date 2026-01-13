@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { processConsultationAudio } from './services/geminiService';
 import { AppState, ConsultationSummary, AppSettings } from './types';
 import SummaryCard from './components/SummaryCard';
+import VuMeter from './components/VuMeter';
 
 const DEFAULT_SETTINGS: AppSettings = {
   startStopKey: 'F5',
@@ -566,12 +567,9 @@ CONDUTA: ${s.conduta}
         {appState === AppState.RECORDING && (
           <div className="text-center">
 
-            {/* Indicador Visual do Estado (Gravando vs Pausado por Silêncio) */}
-            <div className={`w-32 h-32 rounded-full flex items-center justify-center mx-auto mb-6 relative shadow-inner transition-colors duration-500 ${isPausedBySilence ? 'bg-amber-100' : 'bg-red-100'}`}>
-              <i className={`fas text-4xl transition-colors duration-500 ${isPausedBySilence ? 'fa-microphone-slash text-amber-500' : 'fa-microphone text-red-500 animate-pulse'}`}></i>
-              {!isPausedBySilence && (
-                <div className="absolute inset-0 border-4 border-red-500 rounded-full animate-ping opacity-20"></div>
-              )}
+            {/* VU Meter Digital */}
+            <div className="mb-8 w-full max-w-md mx-auto">
+              <VuMeter analyser={analyserRef.current} isPaused={isPausedBySilence} />
             </div>
 
             <div className={`text-5xl font-mono font-bold mb-4 tabular-nums transition-colors duration-300 ${isPausedBySilence ? 'text-amber-500' : 'text-slate-800'}`}>
