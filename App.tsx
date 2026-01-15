@@ -401,11 +401,17 @@ const App: React.FC = () => {
 PRONTUÁRIO OTORRINOLARINGOLÓGICO
 -------------------------------
 IDENTIFICAÇÃO: ${s.pacienteInfo || 'N/A'}
+
 QUEIXA PRINCIPAL: ${s.queixaPrincipal}
+
 HDA: ${s.hda}
+
 ANTECEDENTES: ${s.antecedentes || 'Não relatado'}
+
 EXAME FÍSICO: ${s.exameFisico || 'Não registrado'}
+
 HIPÓTESE DIAGNÓSTICA: ${s.hipoteseDiagnostica || 'A investigar'}
+
 CONDUTA: ${s.conduta}
     `.trim();
 
