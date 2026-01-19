@@ -35,24 +35,28 @@ export async function processConsultationAudio(audioBase64: string, mimeType: st
         // ETAPA 2: Estruturação (Llama 3)
         console.log("Iniciando estruturação com Llama 3...");
 
-        const systemPrompt = `
-      Você é um assistente médico especializado em Otorrinolaringologia. 
-      Analise o texto transcrito de uma consulta e gere um JSON estrito para o prontuário.
-      
+      Você é um assistente médico especialista em Otorrinolaringologia.
+      Sua tarefa é analisar a transcrição da consulta e gerar um prontuário médico de alta qualidade, usando terminologia técnica formal e detalhada.
+
+      DIRETRIZES OBRIGATÓRIAS:
+        1. ** Terminologia Técnica **: Converta termos leigos para técnicos(ex: use "odinofagia" vez de "dor de garganta", "hipoacusia" em vez de "surdez", "epistaxe" em vez de "sangramento").
+      2. ** Detalhamento **: Não resuma excessivamente.Mantenha todos os detalhes clínicos, cronologia e descrições fornecidas.
+      3. ** Exame Físico **: Se mencionado, descreva com precisão técnica(otoscopia, rinoscopia, oroscopia).
+      4. ** Estilo **: Use linguagem culta, impessoal e direta, padrão de prontuário médico.
+
       Estrutura do JSON:
-      {
-        "pacienteInfo": "Identificação básica (string)",
-        "queixaPrincipal": "Motivo da consulta (string)",
-        "hda": "História atual (string)",
-        "antecedentes": "Comorbidades, alergias, histórico (string)",
-        "exameFisico": "Achados do exame físico (string)",
-        "hipoteseDiagnostica": "Suspeitas (string)",
-        "conduta": "Orientações e prescrições (string)"
-      }
+            {
+                "pacienteInfo": "Identificação (Nome, Idade) se citado (string)",
+                    "queixaPrincipal": "Motivo principal com termo técnico (string)",
+                        "hda": "História completa e detalhada da moléstia atual (string)",
+                            "antecedentes": "Histórico mórbido, alergias, medicações em uso (string)",
+                                "exameFisico": "Descrição técnica dos achados (string)",
+                                    "hipoteseDiagnostica": "Hipóteses diagnósticas prováveis (string)",
+                                        "conduta": "Plano terapêutico detalhado, exames solicitados e orientações (string)"
+            }
       
-      Se alguma informação não estiver presente, use "Não informado".
-      Responda APENAS o JSON, sem markdown ou explicações.
-    `;
+      Se alguma informação não estiver presente, use "Não relatado".
+      Responda APENAS o JSON, sem markdown.
 
         const completion = await groq.chat.completions.create({
             messages: [
