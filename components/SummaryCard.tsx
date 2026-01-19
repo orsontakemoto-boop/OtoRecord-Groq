@@ -21,7 +21,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ summary, onReset, onCopy }) =
 
   return (
     <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100 max-w-4xl mx-auto animate-fadeIn">
-      <div className="bg-blue-600 px-6 py-4 flex justify-between items-center">
+      <div className="bg-orange-600 px-6 py-4 flex justify-between items-center">
         <h2 className="text-white font-bold text-lg flex items-center gap-2">
           <i className="fas fa-file-alt"></i> Resumo da Anamnese
         </h2>
@@ -44,7 +44,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ summary, onReset, onCopy }) =
       <div className="p-6 space-y-6">
         {sections.map((section, idx) => (
           <div key={idx} className="border-b border-slate-50 last:border-0 pb-4 last:pb-0">
-            <h3 className="text-blue-600 font-semibold text-sm uppercase tracking-wider mb-2 flex items-center gap-2">
+            <h3 className="text-orange-600 font-semibold text-sm uppercase tracking-wider mb-2 flex items-center gap-2">
               <i className={`fas ${section.icon} w-5`}></i> {section.label}
             </h3>
             <p className="text-slate-700 leading-relaxed">

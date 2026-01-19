@@ -4,8 +4,8 @@
   "description": "Assistente de prontuário para otorrinolaringologistas.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#2563eb",
+  "background_color": "#fff7ed",
+  "theme_color": "#ea580c",
   "icons": [
     {
       "src": "/icon.png",

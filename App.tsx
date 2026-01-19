@@ -446,7 +446,7 @@ CONDUTA: ${s.conduta}
 
   const showToast = (msg: string) => {
     const toast = document.createElement('div');
-    toast.className = 'fixed bottom-8 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-6 py-3 rounded-full shadow-2xl z-[200] animate-bounce text-sm font-bold flex items-center gap-2';
+    toast.className = 'fixed bottom-8 left-1/2 -translate-x-1/2 bg-orange-600 text-white px-6 py-3 rounded-full shadow-2xl z-[200] animate-bounce text-sm font-bold flex items-center gap-2';
     toast.innerHTML = `<i class="fas fa-check-circle"></i> ${msg}`;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
@@ -513,15 +513,15 @@ CONDUTA: ${s.conduta}
       <header className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2 rounded-lg text-white">
-              <i className="fas fa-ear-listen text-xl"></i>
+            <div className="bg-orange-600 p-2 rounded-lg text-white">
+              <i className="fas fa-microphone-lines text-xl"></i>
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-800">OtoRecord Groq</h1>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Inteligência Médica</p>
             </div>
           </div>
-          <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors">
+          <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-orange-600 transition-colors">
             <i className="fas fa-cog text-xl"></i>
           </button>
         </div>
@@ -556,16 +556,16 @@ CONDUTA: ${s.conduta}
 
         {appState === AppState.IDLE && apiKey && (
           <div className="text-center max-w-lg animate-fadeIn">
-            <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl shadow-inner">
+            <div className="w-24 h-24 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl shadow-inner">
               <i className="fas fa-microphone"></i>
             </div>
             <h2 className="text-2xl font-bold text-slate-800 mb-2">Nova Consulta</h2>
             <p className="text-slate-500 mb-8">
-              Fale <span className="font-bold text-blue-600">"Encerrar"</span> ou <span className="font-bold text-blue-600">"Tchau"</span> para finalizar.
+              Fale <span className="font-bold text-orange-600">"Encerrar"</span> ou <span className="font-bold text-orange-600">"Tchau"</span> para finalizar.
             </p>
             <button
               onClick={startRecording}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-full font-bold shadow-lg flex items-center gap-3 mx-auto transition-all active:scale-95"
+              className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-4 rounded-full font-bold shadow-lg flex items-center gap-3 mx-auto transition-all active:scale-95"
             >
               <i className="fas fa-play"></i> Iniciar ({settings.startStopKey})
             </button>
@@ -585,7 +585,7 @@ CONDUTA: ${s.conduta}
             </div>
 
             {isAutoStopping ? (
-              <div className="mb-6 px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-bold animate-bounce inline-block border border-blue-200">
+              <div className="mb-6 px-4 py-2 bg-orange-100 text-orange-700 rounded-full text-sm font-bold animate-bounce inline-block border border-orange-200">
                 <i className="fas fa-check mr-2"></i> Encerrando consulta...
               </div>
             ) : isPausedBySilence ? (
@@ -612,7 +612,7 @@ CONDUTA: ${s.conduta}
 
         {appState === AppState.PROCESSING && (
           <div className="text-center max-w-sm animate-pulse">
-            <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
+            <div className="w-16 h-16 border-4 border-orange-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
             <h2 className="text-xl font-bold text-slate-800">Processando...</h2>
             <p className="text-slate-500 mt-2">
               Aguarde. Graças à Pausa Inteligente, o envio será mais rápido.
@@ -624,7 +624,7 @@ CONDUTA: ${s.conduta}
           <div className="w-full max-w-4xl animate-fadeIn">
             <div className="mb-4 flex justify-between items-center px-2">
               <span className="text-xs text-slate-400 font-medium">Copiar: <b className="text-slate-600">{settings.copyKey}</b></span>
-              <button onClick={resetApp} className="text-xs text-blue-600 font-bold hover:text-blue-800 transition-colors">NOVA CONSULTA</button>
+              <button onClick={resetApp} className="text-xs text-orange-600 font-bold hover:text-orange-800 transition-colors">NOVA CONSULTA</button>
             </div>
             <SummaryCard summary={summary} onReset={resetApp} onCopy={copySummaryText} />
           </div>
@@ -637,7 +637,7 @@ CONDUTA: ${s.conduta}
             </div>
             <h2 className="text-lg font-bold text-slate-800 mb-2">Ops! Algo deu errado.</h2>
             <p className="text-slate-600 text-sm mb-6 bg-red-50 p-3 rounded-lg border border-red-100">{errorMsg}</p>
-            <button onClick={resetApp} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-bold transition-colors w-full">
+            <button onClick={resetApp} className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-3 rounded-lg font-bold transition-colors w-full">
               Tentar Novamente
             </button>
           </div>
@@ -692,7 +692,7 @@ CONDUTA: ${s.conduta}
                     <i className="fas fa-microphone-lines"></i> Microfone
                   </h4>
                   <select
-                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 outline-none focus:ring-2 ring-blue-500"
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 outline-none focus:ring-2 focus:ring-orange-500"
                     value={settings.selectedDeviceId || ''}
                     onChange={(e) => saveSettings({ ...settings, selectedDeviceId: e.target.value })}
                   >
@@ -718,7 +718,7 @@ CONDUTA: ${s.conduta}
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Gravar / Parar</label>
                       <div className="relative mt-1">
                         <input
-                          className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl text-center font-mono font-bold text-slate-600 focus:border-blue-500 outline-none transition-all cursor-pointer text-sm"
+                          className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl text-center font-mono font-bold text-slate-600 focus:border-orange-500 outline-none transition-all cursor-pointer text-sm"
                           readOnly value={settings.startStopKey}
                           onKeyDown={(e) => { e.preventDefault(); saveSettings({ ...settings, startStopKey: e.key }); }}
                         />
@@ -728,7 +728,7 @@ CONDUTA: ${s.conduta}
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Copiar Resumo</label>
                       <div className="relative mt-1">
                         <input
-                          className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl text-center font-mono font-bold text-slate-600 focus:border-blue-500 outline-none transition-all cursor-pointer text-sm"
+                          className="w-full bg-slate-50 border-2 border-slate-100 p-3 rounded-xl text-center font-mono font-bold text-slate-600 focus:border-orange-500 outline-none transition-all cursor-pointer text-sm"
                           readOnly value={settings.copyKey}
                           onKeyDown={(e) => { e.preventDefault(); saveSettings({ ...settings, copyKey: e.key }); }}
                         />
