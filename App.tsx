@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { processConsultationAudio } from './services/geminiService';
+import { processConsultationAudio } from './services/groqService';
 import { AppState, ConsultationSummary, AppSettings } from './types';
 import SummaryCard from './components/SummaryCard';
 import VuMeter from './components/VuMeter';
@@ -81,7 +81,7 @@ const App: React.FC = () => {
   const [isPausedBySilence, setIsPausedBySilence] = useState(false);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
 
-  const [apiKey, setApiKey] = useState<string>(() => safeGetItem('otoRecordApiKey') || '');
+  const [apiKey, setApiKey] = useState<string>(() => safeGetItem('otoRecordGroqKey') || '');
   const [tempApiKey, setTempApiKey] = useState('');
 
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -140,7 +140,7 @@ const App: React.FC = () => {
   const saveApiKey = (key: string) => {
     const cleanKey = key.trim();
     setApiKey(cleanKey);
-    safeSetItem('otoRecordApiKey', cleanKey);
+    safeSetItem('otoRecordGroqKey', cleanKey);
     if (cleanKey) setShowSettings(false);
   };
 
@@ -379,7 +379,7 @@ const App: React.FC = () => {
           console.error("Erro processamento:", innerError);
           // Se for erro de chave inválida, limpa para pedir de novo
           if (innerError.message && (innerError.message.includes("Chave de API inválida") || innerError.message.includes("400"))) {
-            safeRemoveItem('otoRecordApiKey');
+            safeRemoveItem('otoRecordGroqKey');
             setApiKey('');
             setErrorMsg("Sua Chave de API parece inválida ou expirou. Por favor, configure-a novamente.");
           } else {
@@ -515,7 +515,7 @@ CONDUTA: ${s.conduta}
               <i className="fas fa-ear-listen text-xl"></i>
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-800">OtoRecord</h1>
+              <h1 className="text-xl font-bold text-slate-800">OtoRecord Groq</h1>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Inteligência Médica</p>
             </div>
           </div>
@@ -528,24 +528,24 @@ CONDUTA: ${s.conduta}
       <main className="flex-1 p-6 flex flex-col items-center justify-center">
         {(!apiKey && !showSettings) && (
           <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-8 text-center animate-fadeIn">
-            <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-6 text-3xl">
-              <i className="fas fa-key"></i>
+            <div className="w-24 h-24 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center mb-6 text-3xl">
+              <i className="fas fa-bolt"></i>
             </div>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">Bem-vindo ao OtoRecord</h2>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Bem-vindo ao OtoRecord (Groq)</h2>
             <p className="text-slate-500 mb-8 max-w-md">
-              Para garantir privacidade e desempenho, este aplicativo requer sua própria <strong>Chave de API do Google Gemini</strong>.
+              Para garantir velocidade extrema, este aplicativo requer sua <strong>Chave de API da Groq</strong>.
             </p>
             <button
               onClick={() => setShowSettings(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 transition-transform active:scale-95"
+              className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center gap-2 transition-transform active:scale-95"
             >
               Configurar Minha Chave <i className="fas fa-arrow-right"></i>
             </button>
             <a
-              href="https://aistudio.google.com/app/apikey"
+              href="https://console.groq.com/keys"
               target="_blank"
               rel="noreferrer"
-              className="mt-6 text-sm text-blue-500 hover:underline"
+              className="mt-6 text-sm text-orange-600 hover:underline"
             >
               Não tem uma chave? Crie uma aqui gratuitamente.
             </a>
@@ -656,9 +656,9 @@ CONDUTA: ${s.conduta}
 
             <div className="space-y-8">
               {/* Seção API Key */}
-              <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-                <label className="text-xs font-bold text-blue-600 uppercase tracking-widest block mb-2">
-                  <i className="fas fa-key mr-1"></i> Chave de API Gemini
+              <div className="bg-orange-50 p-4 rounded-2xl border border-orange-100">
+                <label className="text-xs font-bold text-orange-600 uppercase tracking-widest block mb-2">
+                  <i className="fas fa-key mr-1"></i> Chave de API Groq (gsk_...)
                 </label>
                 <p className="text-xs text-slate-500 mb-3">
                   Sua chave é armazenada localmente no seu navegador.
@@ -666,20 +666,20 @@ CONDUTA: ${s.conduta}
                 <div className="flex gap-2">
                   <input
                     type="password"
-                    className="flex-1 bg-white border border-blue-200 p-3 rounded-xl text-sm font-mono outline-none focus:ring-2 ring-blue-500"
-                    placeholder="Cole sua chave aqui (AIza...)"
+                    className="flex-1 bg-white border border-orange-200 p-3 rounded-xl text-sm font-mono outline-none focus:ring-2 ring-orange-500"
+                    placeholder="Cole sua chave aqui (gsk_...)"
                     defaultValue={apiKey}
                     onChange={(e) => setTempApiKey(e.target.value)}
                   />
                   <button
                     onClick={() => saveApiKey(tempApiKey || apiKey)}
-                    className="bg-blue-600 text-white px-4 rounded-xl font-bold hover:bg-blue-700"
+                    className="bg-orange-600 text-white px-4 rounded-xl font-bold hover:bg-orange-700"
                   >
                     Salvar
                   </button>
                 </div>
                 <div className="mt-2 text-right">
-                  <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-xs text-blue-500 underline hover:text-blue-700">Obter chave grátis</a>
+                  <a href="https://console.groq.com/keys" target="_blank" className="text-xs text-orange-600 underline hover:text-orange-800">Obter chave grátis</a>
                 </div>
               </div>
 
